@@ -9,7 +9,7 @@ Voraussetzungen: [uv](https://docs.astral.sh/uv/) und Python ≥ 3.10.
 
 ```bash
 uv sync                                           # installiert alle Dependencies
-uv run python scripts/create_sample_images.py     # optional: Demo-Bilder erzeugen
+uv run python scripts/create_sample_images.py     # optional: Demo-Bilder erzeugen (Defekte als Text, nur auf den Modalitäten sichtbar, auf denen sie laut Sichtbarkeitstabelle erkennbar sind)
 uv run python app.py                              # startet auf http://127.0.0.1:5000
 ```
 
