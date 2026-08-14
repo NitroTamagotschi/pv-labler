@@ -3,12 +3,14 @@
 Creates three cell types x three cells in the modalities VI, EL and UVF,
 deliberately leaving one modality out of one group so the "Image missing"
 placeholder of the group pop-up can be tested. Also writes one image with an
-unparseable filename to demonstrate the §10.4 handling.
+unparseable filename to demonstrate the §10.4 handling, and a variant example
+in the format 23_089_A1_EL_LR_Cell00x.jpg.
 """
 import os
 
 import numpy as np
 import tifffile
+from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.normpath(os.path.join(HERE, "..", "data", "images"))
@@ -58,6 +60,19 @@ def main():
                 name = f"{cell_type}_{modality}_{cell_id}.tif"
                 tifffile.imwrite(os.path.join(IMAGES_DIR, name), make_cell(modality, seed))
                 print(f"wrote {name}")
+    # variant example: EL plus an EL_LR JPG variant of the same cell
+    for cell in range(1, 3):
+        cell_id = f"Cell{cell:03d}"
+        seed += 1
+        data = make_cell("EL", seed)
+        name = f"23_089_A1_EL_{cell_id}.tif"
+        tifffile.imwrite(os.path.join(IMAGES_DIR, name), data)
+        print(f"wrote {name}")
+        name_lr = f"23_089_A1_EL_LR_{cell_id}.jpg"
+        Image.fromarray((data / 256).astype(np.uint8)).save(
+            os.path.join(IMAGES_DIR, name_lr), quality=90
+        )
+        print(f"wrote {name_lr}")
     # one image with an unparseable filename, to demonstrate the §10.4 handling
     bad = os.path.join(IMAGES_DIR, "badname.tif")
     tifffile.imwrite(bad, np.zeros((64, 64), dtype=np.uint8))

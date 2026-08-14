@@ -11,6 +11,8 @@ import numpy as np
 import tifffile
 from PIL import Image
 
+from images import IMAGE_EXTENSIONS
+
 PREVIEW_MAX_SIZE = 1024
 PREVIEW_QUALITY = 90
 
@@ -29,8 +31,8 @@ class PreviewGenerator:
         """Validate a requested filename and return the absolute source path."""
         if os.path.basename(filename) != filename:
             raise ValueError("Invalid image filename")
-        if not filename.lower().endswith((".tif", ".tiff")):
-            raise ValueError("Not a TIFF file")
+        if not filename.lower().endswith(IMAGE_EXTENSIONS):
+            raise ValueError("Unsupported image extension")
         return os.path.join(self.images_dir, filename)
 
     def get_preview_path(self, filename):
@@ -54,15 +56,40 @@ class PreviewGenerator:
         return f"{stem}_{digest}.jpg"
 
     def _generate(self, source, cache_path):
+        data = self._read_source(source)
+        image = Image.fromarray(self._to_uint8(data))
+        image.thumbnail((PREVIEW_MAX_SIZE, PREVIEW_MAX_SIZE), Image.Resampling.LANCZOS)
+        os.makedirs(self.previews_dir, exist_ok=True)
+        tmp_path = cache_path + ".tmp"
         try:
-            with tifffile.TiffFile(source) as tif:
-                data = tif.pages[0].asarray()
-        except Exception as exc:
+            image.save(tmp_path, format="JPEG", quality=PREVIEW_QUALITY)
+            os.replace(tmp_path, cache_path)
+        except BaseException:
             try:
-                with Image.open(source) as img:
-                    data = np.asarray(img)
-            except Exception:
-                raise PreviewError(f"Cannot read {os.path.basename(source)}: {exc}") from exc
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    def _read_source(self, source):
+        """Read the image data, using tifffile for TIFFs and Pillow otherwise."""
+        if source.lower().endswith((".tif", ".tiff")):
+            try:
+                with tifffile.TiffFile(source) as tif:
+                    return tif.pages[0].asarray()
+            except Exception as exc:
+                try:
+                    with Image.open(source) as img:
+                        return np.asarray(img)
+                except Exception:
+                    raise PreviewError(
+                        f"Cannot read {os.path.basename(source)}: {exc}"
+                    ) from exc
+        try:
+            with Image.open(source) as img:
+                return np.asarray(img)
+        except Exception as exc:
+            raise PreviewError(f"Cannot read {os.path.basename(source)}: {exc}") from exc
         image = Image.fromarray(self._to_uint8(data))
         image.thumbnail((PREVIEW_MAX_SIZE, PREVIEW_MAX_SIZE), Image.Resampling.LANCZOS)
         os.makedirs(self.previews_dir, exist_ok=True)

@@ -38,6 +38,17 @@ def test_generate_float_preview(generator):
         assert img.format == "JPEG"
 
 
+def test_generate_jpg_preview(generator):
+    images_dir, gen = generator
+    rng = np.random.default_rng(3)
+    Image.fromarray(rng.integers(0, 255, (64, 64), dtype=np.uint8)).save(
+        str(images_dir / "23_089_A1_EL_LR_Cell001.jpg")
+    )
+    path = gen.get_preview_path("23_089_A1_EL_LR_Cell001.jpg")
+    with Image.open(path) as img:
+        assert img.format == "JPEG"
+
+
 def test_preview_is_cached(generator):
     images_dir, gen = generator
     _write_tiff(images_dir, "23-P09-B1_VI_Cell001.tif", np.zeros((64, 64), dtype=np.uint8))
@@ -46,14 +57,14 @@ def test_preview_is_cached(generator):
     assert first == second
 
 
-def test_rejects_traversal_and_non_tiff(generator):
+def test_rejects_traversal_and_non_image(generator):
     _, gen = generator
     with pytest.raises(ValueError):
         gen.get_preview_path("../evil.tif")
     with pytest.raises(ValueError):
         gen.get_preview_path("sub/dir/x.tif")
     with pytest.raises(ValueError):
-        gen.get_preview_path("x.jpg")
+        gen.get_preview_path("x.bmp")
 
 
 def test_missing_file_raises(generator):

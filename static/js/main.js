@@ -92,7 +92,9 @@
             figure.appendChild(missing);
           }
           const caption = document.createElement("figcaption");
-          caption.textContent = member.display_name;
+          caption.textContent = member.variant
+            ? `${member.display_name} (${member.variant})`
+            : member.display_name;
           figure.appendChild(caption);
           body.appendChild(figure);
         }

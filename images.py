@@ -1,31 +1,48 @@
 """Scanning, parsing and grouping of the image files in data/images/.
 
-Filename format (specification.md §4.1):
-    <Solarzellentyp>_<Modalität>_<Bildidentifikator>.tif
-The cell type may itself contain underscores, so everything before the last
-two underscore-separated segments is treated as the cell type.
+Filename format (specification.md §4.1, extended):
+    <Solarzellentyp>_<Modalität>[_<Variante>...]_<Bildidentifikator>[_<Zusatz>...].<ext>
+Examples:
+    23-P09-B1_EL_Cell001.tif
+    23_089_A1_EL_LR_Cell001.jpg         variant "LR"
+    23_089_A1_EL01_LR_Cell001.jpg       modality "EL" with digit suffix, variant "01_LR"
+    23-P09-A2_EL_Cell114_normalized.tif variant "normalized"
+
+The cell type may itself contain underscores. The modality is the rightmost
+segment matching a filename code optionally followed by digits; the cell
+identifier is the rightmost segment matching "Cell<digits>" (fallback: the
+last segment). Segments between modality and cell identifier, plus trailing
+segments, form the variant.
 """
+import functools
 import os
 import re
 
-IMAGE_EXTENSIONS = (".tif", ".tiff")
+IMAGE_EXTENSIONS = (".tif", ".tiff", ".jpg", ".jpeg", ".png")
 
-FILENAME_PATTERN = re.compile(
-    r"^(?P<type>.+)_(?P<modality>[^_]+)_(?P<cell>[^_]+)\.(?:tif|tiff)$",
-    re.IGNORECASE,
-)
+CELL_PATTERN = re.compile(r"^cell\d+$", re.IGNORECASE)
+
+
+@functools.lru_cache(maxsize=8)
+def _modality_pattern(codes_tuple):
+    """Regex matching a modality segment: a code optionally followed by digits."""
+    return re.compile(
+        r"^(" + "|".join(re.escape(code) for code in codes_tuple) + r")(\d*)$",
+        re.IGNORECASE,
+    )
 
 
 class ImageInfo:
     """Metadata of one image file, parsed from its filename."""
 
-    __slots__ = ("filename", "cell_type", "modality", "cell_id", "group_key")
+    __slots__ = ("filename", "cell_type", "modality", "cell_id", "variant", "group_key")
 
-    def __init__(self, filename, cell_type, modality, cell_id):
+    def __init__(self, filename, cell_type, modality, cell_id, variant=None):
         self.filename = filename
         self.cell_type = cell_type
         self.modality = modality
         self.cell_id = cell_id
+        self.variant = variant
         self.group_key = (cell_type, cell_id)
 
 
@@ -47,19 +64,48 @@ def parse_filename(filename, filename_codes):
     """Parse a filename into ImageInfo, or return None if it is invalid.
 
     filename_codes maps lowercase filename codes to canonical modality codes
-    (see modality_filename_codes); matching is case-insensitive.
+    (see modality_filename_codes); matching is case-insensitive. If several
+    segments match, the rightmost one is treated as the modality.
     """
-    match = FILENAME_PATTERN.match(filename)
-    if match is None:
+    stem, ext = os.path.splitext(filename)
+    if ext.lower() not in IMAGE_EXTENSIONS:
         return None
-    configured = filename_codes.get(match.group("modality").lower())
-    if configured is None:
+    parts = stem.split("_")
+    if len(parts) < 2 or not parts[-1]:
         return None
+    # find the rightmost modality segment (code with optional digit suffix)
+    pattern = _modality_pattern(tuple(filename_codes))
+    modality_idx = None
+    for idx in range(len(parts) - 1, -1, -1):
+        match = pattern.match(parts[idx])
+        if match:
+            modality_idx = idx
+            modality = filename_codes[match.group(1).lower()]
+            digit_suffix = match.group(2)
+            break
+    if modality_idx is None:
+        return None
+    # cell identifier: rightmost "Cell<digits>" segment after the modality,
+    # falling back to the last segment
+    cell_idx = len(parts) - 1
+    for idx in range(len(parts) - 1, modality_idx, -1):
+        if CELL_PATTERN.match(parts[idx]):
+            cell_idx = idx
+            break
+    if cell_idx <= modality_idx:
+        return None
+    cell_type = "_".join(parts[:modality_idx])
+    if not cell_type:
+        return None
+    variant_parts = [digit_suffix] if digit_suffix else []
+    variant_parts.extend(parts[modality_idx + 1 : cell_idx])
+    variant_parts.extend(parts[cell_idx + 1 :])
     return ImageInfo(
         filename=filename,
-        cell_type=match.group("type"),
-        modality=configured,
-        cell_id=match.group("cell"),
+        cell_type=cell_type,
+        modality=modality,
+        cell_id=parts[cell_idx],
+        variant="_".join(variant_parts) or None,
     )
 
 
@@ -68,7 +114,7 @@ def scan_images(images_dir, filename_codes, log=None):
 
     Returns (images, groups, unparseable):
       images      {filename: ImageInfo}
-      groups      {group_key: {modality_code: ImageInfo}}
+      groups      {group_key: {modality_code: {variant|None: ImageInfo}}}
       unparseable list of image filenames that could not be assigned to a group
     """
     images = {}
@@ -88,7 +134,10 @@ def scan_images(images_dir, filename_codes, log=None):
                 unparseable.append(name)
                 continue
             images[info.filename] = info
-            groups.setdefault(info.group_key, {})[info.modality] = info
+            variant_group = groups.setdefault(info.group_key, {}).setdefault(
+                info.modality, {}
+            )
+            variant_group[info.variant] = info
     if log is not None:
         for name in unparseable:
             log("Ignoring image with unparseable filename or unknown modality: %s", name)

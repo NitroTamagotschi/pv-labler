@@ -228,15 +228,28 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         members = []
         for modality in app.config["PV_CONFIG"]["modalities"]:
             code = modality["code"]
-            member = groups[info.group_key].get(code)
-            members.append(
-                {
-                    "code": code,
-                    "display_name": modality["display_name"],
-                    "filename": member.filename if member else None,
-                    "preview_url": url_for("preview", file=member.filename) if member else None,
-                }
-            )
+            variants = groups[info.group_key].get(code, {})
+            if not variants:
+                members.append(
+                    {
+                        "code": code,
+                        "display_name": modality["display_name"],
+                        "variant": None,
+                        "filename": None,
+                        "preview_url": None,
+                    }
+                )
+            for variant in sorted(variants, key=lambda v: (v is not None, v or "")):
+                member = variants[variant]
+                members.append(
+                    {
+                        "code": code,
+                        "display_name": modality["display_name"],
+                        "variant": variant,
+                        "filename": member.filename,
+                        "preview_url": url_for("preview", file=member.filename),
+                    }
+                )
         return jsonify(ok=True, group_key=f"{info.cell_type}_{info.cell_id}", members=members)
 
     @app.route("/preview")
