@@ -131,9 +131,37 @@
         closeGroupModal();
       }
     });
+
+    // cell type filter panel
+    const typeTrigger = document.getElementById("type-filter-trigger");
+    const typePanel = document.getElementById("type-filter-panel");
+    if (typeTrigger && typePanel) {
+      typeTrigger.addEventListener("click", (event) => {
+        event.stopPropagation();
+        typePanel.hidden = !typePanel.hidden;
+      });
+      document.addEventListener("click", (event) => {
+        if (!typePanel.hidden && !typePanel.contains(event.target) && event.target !== typeTrigger) {
+          typePanel.hidden = true;
+        }
+      });
+      const toggleAllTypes = (checked) => {
+        typePanel.querySelectorAll('input[name="cell_type"]').forEach((checkbox) => {
+          checkbox.checked = checked;
+        });
+      };
+      document.getElementById("tf-all").addEventListener("click", () => toggleAllTypes(true));
+      document.getElementById("tf-none").addEventListener("click", () => toggleAllTypes(false));
+    }
+
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !modal.hidden) {
-        closeGroupModal();
+      if (event.key === "Escape") {
+        if (!modal.hidden) {
+          closeGroupModal();
+        }
+        if (typePanel && !typePanel.hidden) {
+          typePanel.hidden = true;
+        }
       }
     });
   });

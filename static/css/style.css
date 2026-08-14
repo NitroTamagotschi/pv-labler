@@ -108,6 +108,104 @@ body {
   background: #fff;
 }
 
+/* -- cell type filter panel --------------------------------------------- */
+
+.type-filter {
+  position: relative;
+}
+
+.type-filter-trigger {
+  padding: 6px 10px;
+  border: 1px solid #c4c9d1;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.type-filter-trigger:hover {
+  border-color: #9aa1ac;
+}
+
+.type-filter-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #fff;
+  border: 1px solid #d8dbe0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 10px;
+  min-width: 240px;
+  max-height: 60vh;
+  overflow: auto;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.type-filter-panel[hidden] {
+  display: none;
+}
+
+.type-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.apply-btn {
+  margin-left: auto;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.apply-btn:hover {
+  background: #1d4ed8;
+}
+
+.type-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.type-option input {
+  accent-color: #2563eb;
+  margin: 0;
+}
+
+.type-option .count {
+  margin-left: auto;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
 .user-box {
   margin-left: auto;
   display: flex;

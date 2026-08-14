@@ -21,7 +21,12 @@ CONFIG = {
 def client(tmp_path):
     images_dir = tmp_path / "images"
     images_dir.mkdir()
-    for name in ("23-P09-B1_VI_Cell001.tif", "23-P09-B1_EL_Cell001.tif"):
+    for name in (
+        "23-P09-B1_VI_Cell001.tif",
+        "23-P09-B1_EL_Cell001.tif",
+        "23-P09-B2_VI_Cell002.tif",
+        "23-P09-B3_VI_Cell003.tif",
+    ):
         tifffile.imwrite(str(images_dir / name), np.zeros((32, 32), dtype=np.uint8))
     app = create_app(
         config=CONFIG,
@@ -68,6 +73,26 @@ def test_label_api_and_good_exclusivity(client):
     )
     state = res.get_json()["state"]
     assert state["good"] == 1 and state["crack"] == 0
+
+
+def test_cell_type_filter(client):
+    client.post("/login", data={"name": "Max"})
+    all_page = client.get("/main?modality=VI&tab=unclassified")
+    assert b"23-P09-B1_VI_Cell001" in all_page.data
+    assert b"23-P09-B2_VI_Cell002" in all_page.data
+    filtered = client.get("/main?modality=VI&tab=unclassified&cell_type=23-P09-B2")
+    assert b"23-P09-B2_VI_Cell002" in filtered.data
+    assert b"23-P09-B1_VI_Cell001" not in filtered.data
+
+
+def test_cell_type_multi_filter(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get(
+        "/main?modality=VI&tab=unclassified&cell_type=23-P09-B1&cell_type=23-P09-B3"
+    )
+    assert b"23-P09-B1_VI_Cell001" in page.data
+    assert b"23-P09-B3_VI_Cell003" in page.data
+    assert b"23-P09-B2_VI_Cell002" not in page.data
 
 
 def test_label_api_rejects_unknown_input(client):

@@ -140,10 +140,20 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         all_images, _ = app.config["PV_INDEX"].get()
         states = app.config["PV_STORE"].get_states()
 
+        all_types = sorted({info.cell_type for info in all_images.values()})
+        selected_types = [t for t in request.args.getlist("cell_type") if t in all_types]
+        if len(selected_types) == len(all_types):
+            selected_types = []  # all selected == no filter
+        # image count per cell type in the selected modality (for the panel)
+        type_counts = {t: 0 for t in all_types}
+
         counts = {t: 0 for t in valid_tabs}
         cards = []
         for filename, info in all_images.items():
             if info.modality != modality:
+                continue
+            type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
+            if selected_types and info.cell_type not in selected_types:
                 continue
             state = states.get(filename, {})
             is_unclassified = not state.get(good_key, 0) and not any(
@@ -177,6 +187,13 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
             {"key": d["key"], "label": d["display_name"], "count": counts[d["key"]]}
             for d in cfg["labels"]["defects"]
         )
+        if not selected_types:
+            cell_type_label = "All"
+        elif len(selected_types) == 1:
+            cell_type_label = selected_types[0]
+        else:
+            cell_type_label = f"{len(selected_types)} selected"
+
         return render_template(
             "main.html",
             user=session["name"],
@@ -185,6 +202,9 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
             tab=tab,
             tabs=tabs,
             cards=cards,
+            selected_types=selected_types,
+            cell_type_label=cell_type_label,
+            cell_types=[{"value": t, "count": type_counts[t]} for t in all_types],
             good_key=good_key,
             good_label=cfg["labels"]["good"]["display_name"],
             defects=cfg["labels"]["defects"],

@@ -17,7 +17,29 @@
         {% endfor %}
       </select>
       <input type="hidden" name="tab" value="{{ tab }}">
+      {% for t in selected_types %}<input type="hidden" name="cell_type" value="{{ t }}">{% endfor %}
     </form>
+    <div class="type-filter">
+      <button type="button" class="type-filter-trigger" id="type-filter-trigger">
+        Cell type: {{ cell_type_label }} <span aria-hidden="true">▾</span>
+      </button>
+      <form method="get" action="{{ url_for('main') }}" class="type-filter-panel" id="type-filter-panel" hidden>
+        <div class="type-filter-actions">
+          <button type="button" class="link-btn" id="tf-all">All</button>
+          <button type="button" class="link-btn" id="tf-none">None</button>
+          <button type="submit" class="apply-btn">Apply</button>
+        </div>
+        {% for t in cell_types %}
+        <label class="type-option">
+          <input type="checkbox" name="cell_type" value="{{ t.value }}"
+                 {% if t.value in selected_types %}checked{% endif %}>
+          {{ t.value }} <span class="count">{{ t.count }}</span>
+        </label>
+        {% endfor %}
+        <input type="hidden" name="modality" value="{{ modality }}">
+        <input type="hidden" name="tab" value="{{ tab }}">
+      </form>
+    </div>
     <div class="user-box">
       <span>{{ user }}</span>
       <a href="{{ url_for('logout') }}">Logout</a>
@@ -27,7 +49,7 @@
   <nav class="tabs">
     {% for t in tabs %}
       <a class="tab {% if t.key == tab %}active{% endif %}"
-         href="{{ url_for('main', modality=modality, tab=t.key) }}">
+         href="{{ url_for('main', modality=modality, tab=t.key, cell_type=selected_types) }}">
         {{ t.label }} <span class="count">{{ t.count }}</span>
       </a>
     {% endfor %}
