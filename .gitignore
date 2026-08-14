@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Laufzeitdaten (nicht versionieren)
+data/labels.csv
+data/change_log.txt
+data/images/*
+!data/images/.gitkeep
+static/previews/*
+!static/previews/.gitkeep

@@ -1,0 +1,18 @@
+{
+  "modalities": [
+    { "code": "VI", "display_name": "VI", "filename_code": "VI" },
+    { "code": "EL", "display_name": "EL", "filename_code": "EL" },
+    { "code": "UVF", "display_name": "UVF", "filename_code": "UV" }
+  ],
+  "labels": {
+    "good": { "key": "good", "display_name": "Good" },
+    "defects": [
+      { "key": "crack", "display_name": "Crack" },
+      { "key": "cross", "display_name": "Cross" },
+      { "key": "dark", "display_name": "Dark" },
+      { "key": "corrosion", "display_name": "Corrosion" },
+      { "key": "discoloration", "display_name": "Discoloration" },
+      { "key": "delamination", "display_name": "Delamination" }
+    ]
+  }
+}

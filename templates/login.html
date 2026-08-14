@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PV Labeling Tool – Login</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="login-page">
+  <div class="login-panel">
+    <h1>PV Labeling Tool</h1>
+    <form method="post" action="{{ url_for('login') }}">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" required autofocus autocomplete="name">
+      {% if error %}<p class="error">{{ error }}</p>{% endif %}
+      <button type="submit">Login</button>
+    </form>
+  </div>
+</body>
+</html>

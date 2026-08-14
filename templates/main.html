@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PV Labeling Tool</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <h1>PV Labeling Tool</h1>
+    <form method="get" action="{{ url_for('main') }}" class="modality-form">
+      <label for="modality">Modality</label>
+      <select id="modality" name="modality" onchange="this.form.submit()">
+        {% for m in modalities %}
+          <option value="{{ m.code }}" {% if m.code == modality %}selected{% endif %}>{{ m.display_name }}</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="tab" value="{{ tab }}">
+    </form>
+    <div class="user-box">
+      <span>{{ user }}</span>
+      <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    {% for t in tabs %}
+      <a class="tab {% if t.key == tab %}active{% endif %}"
+         href="{{ url_for('main', modality=modality, tab=t.key) }}">
+        {{ t.label }} <span class="count">{{ t.count }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+
+  <main class="gallery">
+    {% for card in cards %}
+    <article class="card" data-filename="{{ card.filename }}">
+      <button type="button" class="card-image" title="Show image group">
+        <img src="{{ card.preview_url }}" alt="{{ card.filename }}" loading="lazy">
+      </button>
+      <button type="button" class="card-name" title="Show image group">{{ card.name }}</button>
+      <div class="labels">
+        <label class="label-check good">
+          <input type="checkbox" class="label-checkbox" data-key="{{ good_key }}"
+                 {% if card.good %}checked{% endif %}> {{ good_label }}
+        </label>
+        {% for defect in defects %}
+        <label class="label-check">
+          <input type="checkbox" class="label-checkbox" data-key="{{ defect.key }}"
+                 {% if card.defects[defect.key] %}checked{% endif %}> {{ defect.display_name }}
+        </label>
+        {% endfor %}
+      </div>
+    </article>
+    {% endfor %}
+    <p class="empty" hidden>No images match the current filter.</p>
+  </main>
+
+  <div class="modal-overlay" id="group-modal" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title"></h2>
+        <button type="button" class="modal-close" id="modal-close" aria-label="Close">X</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+    window.APP = {
+      tab: {{ tab|tojson }},
+      goodKey: {{ good_key|tojson }},
+      defectKeys: {{ defect_keys|tojson }},
+      labelUrl: {{ url_for('api_label')|tojson }},
+      groupUrl: {{ url_for('api_group', filename='__FN__')|tojson }}
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
