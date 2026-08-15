@@ -79,6 +79,8 @@ def _validate_config(config):
     for key in keys:
         if not key or not LABEL_KEY_PATTERN.fullmatch(key):
             raise ValueError(f"config.json: invalid label key {key!r}")
+        if key in ("all", "unclassified"):
+            raise ValueError(f"config.json: label key {key!r} is reserved")
     if len(set(keys)) != len(keys):
         raise ValueError("config.json: duplicate label keys")
 
@@ -130,7 +132,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         good_key = cfg["labels"]["good"]["key"]
         defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
         label_keys = [good_key] + defect_keys
-        valid_tabs = ["unclassified"] + label_keys
+        valid_tabs = ["unclassified"] + label_keys + ["all"]
 
         modality = request.args.get("modality", modality_codes[0])
         if modality != "all" and modality not in modality_codes:
@@ -150,6 +152,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         type_counts = {t: 0 for t in all_types}
 
         counts = {t: 0 for t in valid_tabs}
+        total = 0
         cards = []
         modality_displays = {m["code"]: m["display_name"] for m in cfg["modalities"]}
         for filename, info in all_images.items():
@@ -158,6 +161,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
             type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
             if selected_types and info.cell_type not in selected_types:
                 continue
+            total += 1
             state = states.get(filename, {})
             is_unclassified = not state.get(good_key, 0) and not any(
                 state.get(k, 0) for k in defect_keys
@@ -168,10 +172,11 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
                 for key in label_keys:
                     if state.get(key, 0):
                         counts[key] += 1
-            if tab == "unclassified" and not is_unclassified:
-                continue
-            if tab != "unclassified" and not state.get(tab, 0):
-                continue
+            if tab != "all":
+                if tab == "unclassified" and not is_unclassified:
+                    continue
+                if tab != "unclassified" and not state.get(tab, 0):
+                    continue
             cards.append(
                 {
                     "filename": filename,
@@ -191,6 +196,8 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
             {"key": d["key"], "label": d["display_name"], "count": counts[d["key"]]}
             for d in cfg["labels"]["defects"]
         )
+        counts["all"] = total
+        tabs.append({"key": "all", "label": "All", "count": counts["all"]})
         if not selected_types:
             cell_type_label = "All"
         elif len(selected_types) == 1:
@@ -215,31 +222,29 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
             defect_keys=defect_keys,
         )
 
-    @app.route("/api/label", methods=["POST"])
-    def api_label():
+    @app.route("/api/save", methods=["POST"])
+    def api_save():
         if "name" not in session:
             return jsonify(ok=False, error="Not logged in"), 401
-        cfg = app.config["PV_CONFIG"]
-        label_keys = [cfg["labels"]["good"]["key"]] + [
-            d["key"] for d in cfg["labels"]["defects"]
-        ]
         data = request.get_json(silent=True) or {}
-        filename = str(data.get("filename") or "")
-        key = str(data.get("key") or "")
-        value = bool(data.get("value"))
+        changes = data.get("changes")
+        if not isinstance(changes, dict) or not changes:
+            return jsonify(ok=False, error="No changes to save"), 400
         all_images, _ = app.config["PV_INDEX"].get()
-        info = all_images.get(filename)
-        if info is None:
-            return jsonify(ok=False, error="Unknown image"), 404
-        if key not in label_keys:
-            return jsonify(ok=False, error="Unknown label key"), 400
+        updates = {}
+        for filename, labels in changes.items():
+            filename = str(filename)
+            info = all_images.get(filename)
+            if info is None:
+                return jsonify(ok=False, error=f"Unknown image: {filename}"), 404
+            if not isinstance(labels, dict):
+                return jsonify(ok=False, error="Invalid label state"), 400
+            updates[filename] = (info.modality, labels)
         try:
-            state = app.config["PV_STORE"].set_label(
-                filename, info.modality, key, value, session["name"]
-            )
+            states = app.config["PV_STORE"].set_states(updates, session["name"])
         except ValueError as exc:
             return jsonify(ok=False, error=str(exc)), 400
-        return jsonify(ok=True, state=state)
+        return jsonify(ok=True, states=states)
 
     @app.route("/api/group/<path:filename>")
     def api_group(filename):

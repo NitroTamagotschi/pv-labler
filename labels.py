@@ -122,6 +122,48 @@ class LabelStore:
             self._append_log(now, labeler, filename, before, after)
         return after
 
+    def set_states(self, updates, labeler):
+        """Persist a batch of full label states in one CSV rewrite.
+
+        updates maps filename -> (modality_code, {key: 0|1}). Each input state
+        is validated strictly (unknown keys and Good+defect combinations raise
+        ValueError); every key is then folded through apply_label_change so
+        exclusivity cascades against the stored state. One change-log entry is
+        appended per changed file; files whose state does not change are
+        skipped entirely. All changes are written under a single lock hold.
+        """
+        now = dt.datetime.now()
+        with self._lock:
+            rows = self._read_rows()
+            results = {}
+            log_entries = []
+            for filename, (modality_code, new_state) in updates.items():
+                unknown = set(new_state) - set(self.label_keys)
+                if unknown:
+                    raise ValueError(f"Unknown label key(s): {sorted(unknown)}")
+                if new_state.get(self.good_key) and any(
+                    new_state.get(d) for d in self.defect_keys
+                ):
+                    raise ValueError("Good cannot be combined with a defect label")
+                before = self._parse_labels(rows.get(filename, {}))
+                after = dict(before)
+                for key, value in new_state.items():
+                    after = apply_label_change(
+                        after, self.good_key, self.defect_keys, key, 1 if value else 0
+                    )
+                if after == before:
+                    continue
+                rows[filename] = self._build_row(
+                    filename, modality_code, after, labeler, now
+                )
+                results[filename] = after
+                log_entries.append((now, labeler, filename, before, after))
+            if log_entries:
+                self._write_csv(rows.values())
+                for entry in log_entries:
+                    self._append_log(*entry)
+        return results
+
     def _build_row(self, filename, modality_code, labels, labeler, now):
         row = {
             "Datum": now.strftime("%Y-%m-%d"),

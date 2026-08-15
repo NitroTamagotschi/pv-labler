@@ -41,6 +41,7 @@
         <input type="hidden" name="tab" value="{{ tab }}">
       </form>
     </div>
+    <button type="button" id="save-btn" class="save-btn" disabled>Save</button>
     <div class="user-box">
       <span>{{ user }}</span>
       <a href="{{ url_for('logout') }}">Logout</a>
@@ -97,7 +98,7 @@
       tab: {{ tab|tojson }},
       goodKey: {{ good_key|tojson }},
       defectKeys: {{ defect_keys|tojson }},
-      labelUrl: {{ url_for('api_label')|tojson }},
+      saveUrl: {{ url_for('api_save')|tojson }},
       groupUrl: {{ url_for('api_group', filename='__FN__')|tojson }}
     };
   </script>

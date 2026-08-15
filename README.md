@@ -17,8 +17,9 @@ uv run python app.py                              # startet auf http://127.0.0.1
 
 1. Login mit Namen (kein Passwort, Feld ist Pflichtfeld).
 2. Bildmodalität im Dropdown wählen; der gewählte Tab-Filter bleibt beim Wechsel erhalten. Über das `Cell type`-Dropdown lässt sich zusätzlich auf einzelne Solarzellentypen filtern (bleibt ebenfalls beim Modalitätswechsel erhalten).
-3. Labels direkt auf der Bildkarte setzen (`Good` schließt Defekte aus und umgekehrt).
-4. Klick auf Vorschaubild oder Dateinamen öffnet das Pop-up mit allen Modalitäten der Bildgruppe.
+3. Labels direkt auf der Bildkarte setzen (`Good` schließt Defekte aus und umgekehrt). Änderungen werden erst per `Save` gespeichert (Button oben rechts, zeigt die Anzahl geänderter Bilder); bei ungespeicherten Änderungen fragt der Browser beim Verlassen der Seite nach.
+4. Der letzte Tab `All` zeigt alle Bilder der gewählten Modalität unabhängig vom Labelstatus.
+5. Klick auf Vorschaubild oder Dateinamen öffnet das Pop-up mit allen Modalitäten der Bildgruppe.
 
 ## Daten
 
@@ -43,9 +44,9 @@ Einmalig den Browser installieren:
 uv run playwright install chromium
 ```
 
-Die UI-Suite startet die App mit frisch generierten Testbildern in Temp-Verzeichnissen und prüft u. a. den kompletten Round-Trip: Bilder werden über die Checkboxen gemäß dem Generator-Zeitplan gelabelt, danach wird `labels.csv` gegen die Ground Truth verglichen, und das Change-Log wird geprüft.
+Die UI-Suite startet die App mit frisch generierten Testbildern in Temp-Verzeichnissen und prüft u. a. den kompletten Round-Trip: Bilder werden über die Checkboxen gemäß dem Generator-Zeitplan gelabelt und per `Save` gespeichert, danach wird `labels.csv` gegen die Ground Truth verglichen, und das Change-Log wird geprüft.
 
-Die erzeugten `labels.csv`/`change_log.txt` landen dabei in den Temp-Verzeichnissen von pytest (nicht in `data/`) und entstehen erst beim ersten Label-Klick. Zum Inspizieren während des Debuggens können die Temp-Dateien über `--basetemp` im Projekt abgelegt werden:
+Die erzeugten `labels.csv`/`change_log.txt` landen dabei in den Temp-Verzeichnissen von pytest (nicht in `data/`) und entstehen erst beim ersten Klick auf `Save`. Zum Inspizieren während des Debuggens können die Temp-Dateien über `--basetemp` im Projekt abgelegt werden:
 
 ```bash
 uv run pytest -m ui --basetemp=.pytest-tmp   # Dateien danach unter .pytest-tmp/.../data/ einsehbar

@@ -223,6 +223,25 @@ body {
   text-decoration: underline;
 }
 
+.save-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.save-btn:disabled {
+  background: #c4c9d1;
+  cursor: default;
+}
+
 /* -- tabs ---------------------------------------------------------------- */
 
 .tabs {

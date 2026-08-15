@@ -27,6 +27,8 @@ Die Anwendung wird in **Python** entwickelt und mit dem Webframework **Flask** u
 | Bildgruppe | Die drei zu derselben Solarzelle gehörenden Aufnahmen in den Modalitäten VI, EL und UVF. |
 | Label | Ein Klassifikationswert: `Good` oder eine Defektkategorie. |
 | Unclassified | Ansichtsstatus für Bilder, für die noch kein Label gesetzt wurde; kein in der CSV gespeichertes Label. |
+| Alle-Tab | Ansicht, die alle Bilder der gewählten Modalität unabhängig vom Labelstatus anzeigt. |
+| Ungespeicherte Änderung | Eine Labeländerung, die über Checkboxen vorgenommen, aber noch nicht über den `Save`-Button gespeichert wurde. |
 
 ## 3. Label- und Modalitätskonfiguration
 
@@ -130,7 +132,7 @@ Beim Aufruf der Anwendung wird zuerst ein Login-Fenster angezeigt.
 2. Das Feld `Name` ist ein Pflichtfeld.
 3. Nach Klick auf `Login` wird der Name in der Session gespeichert.
 4. Der Benutzer wird zum Main Window weitergeleitet.
-5. Der gespeicherte Name wird bei jeder Labeländerung als Labeler in CSV und Änderungslog erfasst.
+5. Der gespeicherte Name wird beim Speichern von Labeländerungen als Labeler in CSV und Änderungslog erfasst.
 
 ## 6. Benutzeroberfläche
 
@@ -142,6 +144,7 @@ Das Main Window enthält die folgenden Bereiche:
 2. Tabs zum Filtern nach Labelstatus bzw. Labelkategorie.
 3. Bildgalerie mit Bildkarten.
 4. Pop-up-Fenster zur Anzeige aller Modalitäten einer Bildgruppe.
+5. `Save`-Button oben rechts zum Speichern aller ungespeicherten Änderungen.
 
 ### 6.2 Dropdown: Bildmodalität
 
@@ -154,11 +157,12 @@ Das Dropdown zeigt die in `config.json` definierten Modalitäten an, standardmä
 
 ### 6.3 Tabs: Label-Filter
 
-Es gibt folgende Tabs:
+Es gibt folgende Tabs (in dieser Reihenfolge):
 
 - `Unclassified`
 - `Good`
 - Je einen Tab für jeden konfigurierten Defekttyp
+- `All` (letzter Tab)
 
 **Filterlogik:**
 
@@ -167,8 +171,11 @@ Es gibt folgende Tabs:
 | `Unclassified` | Bilder der ausgewählten Modalität ohne gesetztes Label. |
 | `Good` | Bilder der ausgewählten Modalität, bei denen `good = 1` gesetzt ist. |
 | Defekt-Tab, z. B. `Crack` | Bilder der ausgewählten Modalität, bei denen das entsprechende Defektlabel gesetzt ist. |
+| `All` | Alle Bilder der ausgewählten Modalität, unabhängig vom Labelstatus. |
 
 Wenn ein Bild mehrere Defektlabels besitzt, erscheint es in jedem passenden Defekt-Tab.
+
+Die Filterlogik bezieht sich ausschließlich auf den gespeicherten Labelstatus; ungespeicherte Änderungen beeinflussen die Tab-Zuordnung nicht.
 
 ### 6.4 Bildgalerie und Bildkarte
 
@@ -183,8 +190,9 @@ Jede Bildkarte enthält:
 **Interaktion:**
 
 - Klick auf die Bildvorschau oder den Bildnamen öffnet das Image-View-Pop-up.
-- Klick auf eine Checkbox ändert das Label der aktuell dargestellten Bilddatei.
-- Nach einer erfolgreichen Änderung wird die Darstellung aktualisiert, sodass Tab-Filter und Checkboxzustände korrekt sind.
+- Klick auf eine Checkbox ändert das Label ausschließlich in der aktuellen Anzeige; es wird noch nicht gespeichert.
+- Die Bildkarte bleibt im aktuellen Tab sichtbar, auch wenn sie nach der Änderung nicht mehr zum Tab-Filter passt.
+- Erst nach dem Speichern (siehe 6.6) wird die Ansicht neu geladen, sodass Tab-Filter und Checkboxzustände dem gespeicherten Stand entsprechen.
 
 ### 6.5 Image-View-Pop-up
 
@@ -199,6 +207,14 @@ Beim Öffnen eines Bildes wird ein Pop-up-Fenster angezeigt.
 **Beispiel:** Beim Klick auf `23-P09-B1_EL_Cell001.tif` zeigt das Pop-up die zugehörigen Bilder `VI`, `EL` und `UVF` derselben Solarzelle.
 
 Falls eine Modalität einer Bildgruppe nicht vorhanden ist, muss dies sichtbar als fehlendes Bild angezeigt werden; die Anwendung darf dabei nicht fehlschlagen.
+
+### 6.6 Speichern von Labeländerungen
+
+- Checkbox-Klicks ändern zunächst nur die Anzeige; gespeichert wird ausschließlich über den `Save`-Button.
+- Der `Save`-Button befindet sich oben rechts in der Kopfzeile neben dem Anmeldebereich und zeigt die Anzahl der geänderten Bilder an; ohne ungespeicherte Änderungen ist er deaktiviert.
+- Beim Klick auf `Save` werden alle ungespeicherten Änderungen in `labels.csv` und im Änderungslog persistiert. Danach wird die Ansicht neu geladen; Bilder, die nicht mehr zum aktuellen Tab-Filter passen, verschwinden aus der Galerie. Tab-Filter, Modalität und Zelltyp-Filter bleiben dabei erhalten.
+- Solange ungespeicherte Änderungen vorliegen, fragt der Browser beim Verlassen der Seite (Tab-Wechsel, Modalitätswechsel, Logout, Schließen oder Aktualisieren der Seite) über einen Bestätigungsdialog nach. Nicht gespeicherte Änderungen gehen beim Verlassen verloren.
+- Die Tab-Zählungen aktualisieren sich erst nach dem Speichern.
 
 ## 7. Labelregeln
 
@@ -229,7 +245,7 @@ Ein Bild gilt als `Unclassified`, wenn `good = 0` und alle Defektlabel den Wert 
 
 Dateiname: `labels.csv`
 
-Für jede Bilddatei existiert maximal eine aktuelle Zeile. Wird ein bereits gelabeltes Bild erneut geändert, wird seine bestehende Zeile aktualisiert und nicht als Duplikat angelegt.
+Für jede Bilddatei existiert maximal eine aktuelle Zeile. Wird ein bereits gelabeltes Bild erneut geändert, wird seine bestehende Zeile aktualisiert und nicht als Duplikat angelegt. Die Zeile wird ausschließlich beim Klick auf den `Save`-Button aktualisiert.
 
 ### 8.2 CSV-Spalten
 
@@ -266,7 +282,7 @@ Datum,Zeit,Name of labeler,datename,uv,vi,el,good,crack,cross,dark,corrosion,dis
 
 ## 9. Änderungsprotokoll
 
-Jede Änderung eines Labels muss in einem separaten Änderungslog festgehalten werden.
+Beim Speichern muss jede Änderung an einer Bilddatei im Änderungslog festgehalten werden. Pro geändertem Bild wird genau ein Eintrag angehängt, der den Zustand vor und nach der gesamten Speicherung enthält.
 
 Dateiname: `change_log.csv` oder `change_log.txt`.
 
@@ -303,7 +319,7 @@ Das Änderungslog wird ausschließlich ergänzt; bestehende Einträge dürfen ni
 
 - HTML mit Jinja2-Templates
 - CSS für responsives Layout
-- JavaScript für unmittelbare UI-Aktualisierungen und/oder AJAX-Speichern der Checkboxen
+- JavaScript für unmittelbare UI-Aktualisierungen und das Speichern über den `Save`-Button (AJAX) sowie den Bestätigungsdialog beim Verlassen
 - Modal/Pop-up für die Bildgruppenansicht
 
 ### 10.3 Bildanzeige
@@ -348,10 +364,13 @@ Die Implementierung gilt als funktionsfähig, wenn alle folgenden Kriterien erf�
 3. Nach erfolgreichem Login erscheint das Main Window mit Modalitäts-Dropdown, Label-Tabs und Bildgalerie.
 4. Die verfügbaren Modalitäten und Defektkategorien werden aus `config.json` gelesen.
 5. Der Tab `Unclassified` zeigt ausschließlich ungelabelte Bilder der gewählten Modalität.
-6. Die übrigen Tabs filtern Bilder nach dem jeweiligen gesetzten Label.
+6. Die übrigen Tabs filtern Bilder nach dem jeweiligen gesetzten Label. Der letzte Tab `All` zeigt alle Bilder der gewählten Modalität unabhängig vom Labelstatus.
 7. Die Checkboxen erlauben mehrere Defektlabels gleichzeitig.
 8. `Good` und Defektlabels können niemals gleichzeitig für dieselbe Bilddatei aktiv sein.
 9. Ein Klick auf ein Bild öffnet ein Pop-up mit allen verfügbaren Modalitäten derselben Bildgruppe.
-10. Jede Labeländerung aktualisiert oder erzeugt den aktuellen Datensatz in `labels.csv`.
+10. Beim Klick auf `Save` wird für jede geänderte Bilddatei der aktuelle Datensatz in `labels.csv` erzeugt oder aktualisiert.
 11. Die CSV-Datei enthält die spezifizierten Spalten und binäre Labelwerte.
-12. Jede Labeländerung erzeugt zusätzlich einen nachvollziehbaren Eintrag im Änderungslog.
+12. Beim Klick auf `Save` wird pro geänderter Bilddatei genau ein nachvollziehbarer Eintrag im Änderungslog erzeugt.
+13. Der `Save`-Button zeigt die Anzahl der geänderten Bilder und ist ohne ungespeicherte Änderungen deaktiviert.
+14. Bilder, deren Label im aktuellen Tab geändert wurde, bleiben bis zum Speichern sichtbar.
+15. Bei ungespeicherten Änderungen fragt der Browser beim Verlassen der Seite über einen Bestätigungsdialog nach.

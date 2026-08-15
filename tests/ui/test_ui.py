@@ -9,8 +9,9 @@ DEFECT_KEYS = ["crack", "cross", "dark", "corrosion", "discoloration", "delamina
 
 def test_login_and_gallery(login):
     page = login
-    # Unclassified + Good + one tab per defect
-    expect(page.locator(".tab")).to_have_count(len(DEFECT_KEYS) + 2)
+    # Unclassified + Good + one tab per defect + All (last)
+    expect(page.locator(".tab")).to_have_count(len(DEFECT_KEYS) + 3)
+    expect(page.locator(".tab").last).to_contain_text("All")
     expect(page.locator(".card")).not_to_have_count(0)
     expect(page.locator("#modality")).to_contain_text("All")
 
@@ -20,21 +21,42 @@ def test_checkbox_good_exclusivity(login, live_server):
     base = live_server["base_url"]
     page.goto(base + "/main?modality=EL&tab=unclassified")
     card = page.locator('[data-filename="TEST_ALL_EL_Cell001.tif"]')
-    # setting Crack moves the card out of the Unclassified view
+    # a pending click must NOT move the card out of the current tab
     card.locator('.label-checkbox[data-key="crack"]').click()
-    expect(card).to_have_count(0)
-    # in the Crack tab it reappears with Crack checked
-    page.goto(base + "/main?modality=EL&tab=crack")
-    card = page.locator('[data-filename="TEST_ALL_EL_Cell001.tif"]')
     expect(card).to_be_visible()
     expect(card.locator('.label-checkbox[data-key="crack"]')).to_be_checked()
-    # setting Good clears Crack and moves the card to the Good tab
+    expect(page.locator("#save-btn")).to_be_enabled()
+    expect(page.locator("#save-btn")).to_contain_text("Save (1)")
+    # setting Good clears the pending Crack locally, card stays visible
     card.locator('.label-checkbox[data-key="good"]').click()
-    expect(card).to_have_count(0)
-    page.goto(base + "/main?modality=EL&tab=good")
-    card = page.locator('[data-filename="TEST_ALL_EL_Cell001.tif"]')
     expect(card.locator('.label-checkbox[data-key="good"]')).to_be_checked()
     expect(card.locator('.label-checkbox[data-key="crack"]')).not_to_be_checked()
+    expect(card).to_be_visible()
+    # saving reloads the page: the card leaves Unclassified and lands in Good
+    page.locator("#save-btn").click()
+    expect(card).to_have_count(0)  # only true after the reload
+    expect(page.locator("#save-btn")).to_have_text("Save")  # fresh, clean button
+    page.goto(base + "/main?modality=EL&tab=good")
+    card = page.locator('[data-filename="TEST_ALL_EL_Cell001.tif"]')
+    expect(card).to_be_visible()
+    expect(card.locator('.label-checkbox[data-key="good"]')).to_be_checked()
+    expect(card.locator('.label-checkbox[data-key="crack"]')).not_to_be_checked()
+    # the persisted Good keeps it out of the Crack tab
+    page.goto(base + "/main?modality=EL&tab=crack")
+    expect(card).to_have_count(0)
+
+
+def test_revert_clears_dirtiness(login, live_server):
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=EL&tab=unclassified")
+    card = page.locator('[data-filename="TEST_ALL_EL_Cell001.tif"]')
+    crack = card.locator('.label-checkbox[data-key="crack"]')
+    crack.click()
+    expect(page.locator("#save-btn")).to_be_enabled()
+    crack.click()  # back to the initial state
+    expect(page.locator("#save-btn")).to_be_disabled()
+    assert not live_server["labels_csv"].exists()  # nothing persisted without Save
 
 
 def test_group_modal_shows_missing_modality(login, live_server):

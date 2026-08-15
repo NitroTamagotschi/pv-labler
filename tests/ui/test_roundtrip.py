@@ -25,46 +25,28 @@ def _state_str(state):
 
 
 def test_roundtrip_matches_ground_truth(login, live_server, truth):
-    """Label every sample image via the UI and compare labels.csv with the
-    ground truth derived from the generator schedule."""
+    """Label every sample image in the All tab, save once via the button,
+    then compare labels.csv with the ground truth derived from the schedule."""
     page = login
     base = live_server["base_url"]
-    page.goto(base + "/main?modality=all&tab=unclassified")
+    page.goto(base + "/main?modality=all&tab=all")
 
-    # Phase 1: label every card with its first defect (or Good) so it leaves
-    # the Unclassified view. Cards needing more defects are queued for phase 2.
-    remaining = {}
+    # one pass over the All tab: cards never leave the view before saving,
+    # so all labels (including multiple defects) are set in a single pass
     for filename, expected in truth.items():
         card = page.locator(f'[data-filename="{filename}"]')
         expect(card).to_be_visible()
-        if expected["good"]:
-            card.locator('.label-checkbox[data-key="good"]').click()
-        else:
-            keys = [key for key in DEFECT_KEYS if expected[key]]
-            card.locator(f'.label-checkbox[data-key="{keys[0]}"]').click()
-            if len(keys) > 1:
-                remaining[filename] = keys[1:]
-        expect(card).to_have_count(0)
+        for key in ["good"] + DEFECT_KEYS:
+            checkbox = card.locator(f'.label-checkbox[data-key="{key}"]')
+            if expected[key] and not checkbox.is_checked():
+                checkbox.click()
+                expect(checkbox).to_be_checked()
 
-    # Phase 2: add the remaining defects in the tab of the first set defect,
-    # where the card stays visible while more labels are added.
-    for first_key in DEFECT_KEYS:
-        targets = {
-            name: rest
-            for name, rest in remaining.items()
-            if next(key for key in DEFECT_KEYS if truth[name][key]) == first_key
-        }
-        if not targets:
-            continue
-        page.goto(f"{base}/main?modality=all&tab={first_key}")
-        for filename, rest in targets.items():
-            card = page.locator(f'[data-filename="{filename}"]')
-            expect(card).to_be_visible()
-            for key in rest:
-                card.locator(f'.label-checkbox[data-key="{key}"]').click()
-                expect(card.locator(f'.label-checkbox[data-key="{key}"]')).to_be_checked()
+    # save once and wait for the reload (button text is the post-reload state)
+    page.locator("#save-btn").click()
+    expect(page.locator("#save-btn")).to_have_text("Save")
 
-    # Phase 3: verify the persisted CSV against the ground truth.
+    # verify the persisted CSV against the ground truth.
     rows = _read_labels(live_server["labels_csv"])
     assert set(rows) == set(truth)
 
@@ -94,7 +76,9 @@ def test_wrong_label_still_persists(login, live_server):
     filename = "23-P09-B1_VI_Cell001.tif"
     card = page.locator(f'[data-filename="{filename}"]')
     card.locator('.label-checkbox[data-key="dark"]').click()
-    expect(card).to_have_count(0)
+    expect(card).to_be_visible()  # pending: stays visible until saved
+    page.locator("#save-btn").click()
+    expect(card).to_have_count(0)  # only true after the reload
     rows = _read_labels(live_server["labels_csv"])
     assert rows[filename]["dark"] == "1"
     # the same change must be in the change log: exactly one entry, with the

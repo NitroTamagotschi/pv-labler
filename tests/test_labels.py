@@ -168,3 +168,71 @@ def test_change_log_format_and_append_only(tmp_path):
     assert "before: good=1, crack=0" in lines[1]
     after_part = lines[1].split("after: ", 1)[1]
     assert "good=0" in after_part and "dark=1" in after_part
+
+
+# -- batch save (set_states) --------------------------------------------------
+
+
+def test_set_states_batch_writes_one_row_per_file(tmp_path):
+    store = make_store(tmp_path)
+    results = store.set_states(
+        {
+            "23-P09-B1_EL_Cell001.tif": ("EL", {"crack": 1}),
+            "23-P09-B1_VI_Cell002.tif": ("VI", {"good": 1}),
+        },
+        "Max",
+    )
+    assert results["23-P09-B1_EL_Cell001.tif"]["crack"] == 1
+    assert results["23-P09-B1_VI_Cell002.tif"]["good"] == 1
+    rows = read_csv(store.csv_path)
+    assert len(rows) == 2
+    by_name = {row["datename"]: row for row in rows}
+    assert (by_name["23-P09-B1_EL_Cell001.tif"]["uv"],
+            by_name["23-P09-B1_EL_Cell001.tif"]["vi"],
+            by_name["23-P09-B1_EL_Cell001.tif"]["el"]) == ("0", "0", "1")
+    assert (by_name["23-P09-B1_VI_Cell002.tif"]["uv"],
+            by_name["23-P09-B1_VI_Cell002.tif"]["vi"],
+            by_name["23-P09-B1_VI_Cell002.tif"]["el"]) == ("0", "1", "0")
+    # one log entry per changed file
+    lines = Path(store.log_path).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert "23-P09-B1_EL_Cell001.tif" in lines[0]
+    assert "23-P09-B1_VI_Cell002.tif" in lines[1]
+
+
+def test_set_states_cascades_from_stored_state(tmp_path):
+    store = make_store(tmp_path)
+    filename = "23-P09-B1_EL_Cell001.tif"
+    store.set_label(filename, "EL", "crack", 1, "Max")
+    results = store.set_states({filename: ("EL", {"good": 1})}, "Max")
+    assert results[filename]["good"] == 1 and results[filename]["crack"] == 0
+    lines = Path(store.log_path).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2  # one entry from set_label, one from set_states
+    assert "before: good=0, crack=1" in lines[1]
+    after_part = lines[1].split("after: ", 1)[1]
+    assert "good=1" in after_part and "crack=0" in after_part
+
+
+def test_set_states_skips_unchanged(tmp_path):
+    store = make_store(tmp_path)
+    filename = "23-P09-B1_EL_Cell001.tif"
+    store.set_label(filename, "EL", "crack", 1, "Max")
+    results = store.set_states({filename: ("EL", {"crack": 1})}, "Max")
+    assert results == {}
+    assert len(Path(store.log_path).read_text(encoding="utf-8").splitlines()) == 1
+    rows = read_csv(store.csv_path)
+    assert len(rows) == 1 and rows[0]["Datum"] != ""  # row untouched
+
+
+def test_set_states_rejects_unknown_key(tmp_path):
+    store = make_store(tmp_path)
+    with pytest.raises(ValueError):
+        store.set_states({"23-P09-B1_EL_Cell001.tif": ("EL", {"nope": 1})}, "Max")
+
+
+def test_set_states_rejects_good_defect_conflict(tmp_path):
+    store = make_store(tmp_path)
+    with pytest.raises(ValueError):
+        store.set_states(
+            {"23-P09-B1_EL_Cell001.tif": ("EL", {"good": 1, "crack": 1})}, "Max"
+        )

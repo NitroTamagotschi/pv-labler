@@ -3,67 +3,103 @@
 
   const APP = window.APP;
   const labelKeys = [APP.goodKey, ...APP.defectKeys];
-  const currentTab = APP.tab;
+  let dirty = false;
 
-  function isUnclassified(state) {
-    return !state[APP.goodKey] && !APP.defectKeys.some((key) => state[key]);
+  function getCheckbox(card, key) {
+    return card.querySelector(`.label-checkbox[data-key="${key}"]`);
   }
 
-  function matchesFilter(state) {
-    if (currentTab === "unclassified") {
-      return isUnclassified(state);
-    }
-    return !!state[currentTab];
-  }
-
-  function setCheckboxes(card, state) {
+  // full current checkbox state of one card {key: 0|1}
+  function cardState(card) {
+    const state = {};
     for (const key of labelKeys) {
-      const checkbox = card.querySelector(`.label-checkbox[data-key="${key}"]`);
-      if (checkbox) {
-        checkbox.checked = !!state[key];
+      state[key] = getCheckbox(card, key).checked ? 1 : 0;
+    }
+    return state;
+  }
+
+  // defaultChecked holds the server-rendered state, so reverting a checkbox
+  // to its initial value automatically makes the card clean again
+  function cardIsDirty(card) {
+    for (const key of labelKeys) {
+      if (getCheckbox(card, key).checked !== getCheckbox(card, key).defaultChecked) {
+        return true;
       }
     }
+    return false;
   }
 
-  function removeCard(card) {
-    card.remove();
-    const count = document.querySelector(".tab.active .count");
-    if (count) {
-      const value = Math.max(0, (parseInt(count.textContent, 10) || 0) - 1);
-      count.textContent = String(value);
-    }
-    const empty = document.querySelector(".gallery .empty");
-    if (empty && !document.querySelectorAll(".gallery .card").length) {
-      empty.hidden = false;
+  function applyCardState(card, state) {
+    for (const key of labelKeys) {
+      getCheckbox(card, key).checked = !!state[key];
     }
   }
 
-  async function saveLabel(card, key, checked) {
-    const checkbox = card.querySelector(`.label-checkbox[data-key="${key}"]`);
-    checkbox.disabled = true;
+  // mirror of labels.apply_label_change: Good clears defects and vice versa
+  function applyLocalChange(card, key, checked) {
+    const state = cardState(card);
+    state[key] = checked ? 1 : 0;
+    if (key === APP.goodKey && checked) {
+      for (const defect of APP.defectKeys) {
+        state[defect] = 0;
+      }
+    }
+    if (APP.defectKeys.includes(key) && checked) {
+      state[APP.goodKey] = 0;
+    }
+    applyCardState(card, state);
+  }
+
+  function refreshSaveButton() {
+    let count = 0;
+    for (const card of document.querySelectorAll(".card")) {
+      if (cardIsDirty(card)) {
+        count += 1;
+      }
+    }
+    dirty = count > 0;
+    const button = document.getElementById("save-btn");
+    button.disabled = !dirty;
+    button.textContent = dirty ? `Save (${count})` : "Save";
+  }
+
+  async function saveChanges() {
+    const changes = {};
+    for (const card of document.querySelectorAll(".card")) {
+      if (cardIsDirty(card)) {
+        changes[card.dataset.filename] = cardState(card);
+      }
+    }
+    const button = document.getElementById("save-btn");
+    button.disabled = true;
     try {
-      const response = await fetch(APP.labelUrl, {
+      const response = await fetch(APP.saveUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: card.dataset.filename, key: key, value: checked }),
+        body: JSON.stringify({ changes: changes }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        checkbox.checked = !checked; // revert on failure
-        window.alert(data.error || "Label update failed");
+        window.alert(data.error || "Save failed");
+        refreshSaveButton();
         return;
       }
-      setCheckboxes(card, data.state);
-      if (!matchesFilter(data.state)) {
-        removeCard(card);
-      }
+      // clear BEFORE reload, otherwise the beforeunload dialog would ask
+      // for confirmation after every successful save
+      dirty = false;
+      location.reload();
     } catch (error) {
-      checkbox.checked = !checked;
-      window.alert("Label update failed: " + error);
-    } finally {
-      checkbox.disabled = false;
+      window.alert("Save failed: " + error);
+      refreshSaveButton();
     }
   }
+
+  window.addEventListener("beforeunload", (event) => {
+    if (dirty) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  });
 
   function openGroupModal(filename) {
     const url = APP.groupUrl.replace("__FN__", encodeURIComponent(filename));
@@ -113,7 +149,8 @@
       card.addEventListener("change", (event) => {
         const checkbox = event.target;
         if (checkbox.classList.contains("label-checkbox")) {
-          saveLabel(card, checkbox.dataset.key, checkbox.checked);
+          applyLocalChange(card, checkbox.dataset.key, checkbox.checked);
+          refreshSaveButton();
         }
       });
       for (const button of card.querySelectorAll(".card-image, .card-name")) {
@@ -125,6 +162,7 @@
       empty.hidden = cards.length > 0;
     }
     const modal = document.getElementById("group-modal");
+    document.getElementById("save-btn").addEventListener("click", saveChanges);
     document.getElementById("modal-close").addEventListener("click", closeGroupModal);
     modal.addEventListener("click", (event) => {
       if (event.target === modal) {
