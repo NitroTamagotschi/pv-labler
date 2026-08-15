@@ -55,6 +55,8 @@ def _validate_config(config):
         display_name = (modality.get("display_name") or "").strip()
         if not code or not display_name:
             raise ValueError("config.json: each modality needs 'code' and 'display_name'")
+        if code.lower() == "all":
+            raise ValueError("config.json: modality code 'all' is reserved")
         if not MODALITY_CODE_PATTERN.fullmatch(code):
             raise ValueError(f"config.json: invalid modality code {code!r}")
         filename_code = (modality.get("filename_code") or code).strip()
@@ -131,7 +133,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         valid_tabs = ["unclassified"] + label_keys
 
         modality = request.args.get("modality", modality_codes[0])
-        if modality not in modality_codes:
+        if modality != "all" and modality not in modality_codes:
             modality = modality_codes[0]
         tab = request.args.get("tab", "unclassified")
         if tab not in valid_tabs:
@@ -149,8 +151,9 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
 
         counts = {t: 0 for t in valid_tabs}
         cards = []
+        modality_displays = {m["code"]: m["display_name"] for m in cfg["modalities"]}
         for filename, info in all_images.items():
-            if info.modality != modality:
+            if modality != "all" and info.modality != modality:
                 continue
             type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
             if selected_types and info.cell_type not in selected_types:
@@ -173,6 +176,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
                 {
                     "filename": filename,
                     "name": os.path.splitext(filename)[0],
+                    "modality_display": modality_displays.get(info.modality, info.modality),
                     "good": state.get(good_key, 0),
                     "defects": {k: state.get(k, 0) for k in defect_keys},
                     "preview_url": url_for("preview", file=filename),

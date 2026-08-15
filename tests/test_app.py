@@ -75,6 +75,17 @@ def test_label_api_and_good_exclusivity(client):
     assert state["good"] == 1 and state["crack"] == 0
 
 
+def test_modality_all_shows_every_modality(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=all&tab=unclassified")
+    assert b"23-P09-B1_VI_Cell001" in page.data
+    assert b"23-P09-B1_EL_Cell001" in page.data
+    # single modality view filters the other one out
+    only_el = client.get("/main?modality=EL&tab=unclassified")
+    assert b"23-P09-B1_EL_Cell001" in only_el.data
+    assert b"23-P09-B1_VI_Cell001" not in only_el.data
+
+
 def test_cell_type_filter(client):
     client.post("/login", data={"name": "Max"})
     all_page = client.get("/main?modality=VI&tab=unclassified")

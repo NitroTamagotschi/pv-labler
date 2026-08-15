@@ -317,6 +317,18 @@ body {
   text-decoration: underline;
 }
 
+.card-modality {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #e8edf9;
+  color: #1d4ed8;
+  font-size: 0.7rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .labels {
   padding: 4px 12px 12px;
   display: flex;
