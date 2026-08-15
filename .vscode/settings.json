@@ -1,0 +1,11 @@
+{
+    "python.testing.pytestArgs": [
+        "-o",
+        "addopts=",
+        "--basetemp",
+        ".pytest-tmp",
+        "."
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}

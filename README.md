@@ -31,5 +31,36 @@ uv run python app.py                              # startet auf http://127.0.0.1
 ## Tests
 
 ```bash
-uv run pytest
+uv run pytest              # Unit- und Integrationstests (ohne UI)
+uv run pytest -m ui        # UI-Tests (Playwright, headless)
+```
+
+### UI-Tests (Playwright)
+
+Einmalig den Browser installieren:
+
+```bash
+uv run playwright install chromium
+```
+
+Die UI-Suite startet die App mit frisch generierten Testbildern in Temp-Verzeichnissen und prüft u. a. den kompletten Round-Trip: Bilder werden über die Checkboxen gemäß dem Generator-Zeitplan gelabelt, danach wird `labels.csv` gegen die Ground Truth verglichen, und das Change-Log wird geprüft.
+
+Die erzeugten `labels.csv`/`change_log.txt` landen dabei in den Temp-Verzeichnissen von pytest (nicht in `data/`) und entstehen erst beim ersten Label-Klick. Zum Inspizieren während des Debuggens können die Temp-Dateien über `--basetemp` im Projekt abgelegt werden:
+
+```bash
+uv run pytest -m ui --basetemp=.pytest-tmp   # Dateien danach unter .pytest-tmp/.../data/ einsehbar
+```
+
+Zum **Zuschauen** (sichtbares Fenster, Aktionen verlangsamt):
+
+```bash
+uv run pytest -m ui --headed --slowmo 500
+```
+
+Bei Fehlschlägen Video/Trace aufzeichnen:
+
+```bash
+uv run pytest -m ui --video on --tracing retain-on-failure
+# Trace interaktiv ansehen:
+uv run playwright show-trace test-results/.../trace.zip
 ```

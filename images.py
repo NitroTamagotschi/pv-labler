@@ -155,8 +155,16 @@ class ImageIndex:
         self._signature = None
 
     def _dir_signature(self):
+        """Directory mtime plus entry count.
+
+        The entry count guards against filesystems with coarse timestamp
+        resolution, where a freshly added file may not change the directory
+        mtime yet.
+        """
         try:
-            return os.stat(self.images_dir).st_mtime_ns
+            mtime = os.stat(self.images_dir).st_mtime_ns
+            count = sum(1 for _ in os.scandir(self.images_dir))
+            return (mtime, count)
         except OSError:
             return None
 

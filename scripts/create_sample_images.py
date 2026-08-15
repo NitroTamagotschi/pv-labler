@@ -12,6 +12,10 @@ unparseable filename to demonstrate the §10.4 handling, a variant example
 in the format 23_089_A1_EL_LR_Cell00x.jpg, and one full-coverage image per
 modality (TEST_ALL) in which every defect type appears regardless of the
 visibility table.
+
+`image_plan()` and `ground_truth_labels()` are the single source of truth for
+what gets generated; the Playwright UI tests use them to verify the labeling
+round trip.
 """
 import os
 
@@ -23,6 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.normpath(os.path.join(HERE, "..", "data", "images"))
 
 SIZE = 384
+MODALITIES = ["VI", "EL", "UV"]  # filename codes from config.json (UVF -> UV)
 
 # Defect visibility per modality (filename codes; UV = the UVF modality).
 # From the user's table:
@@ -109,72 +114,94 @@ def display_names(defect_keys):
     return [key.capitalize() for key in defect_keys]
 
 
-def main():
-    os.makedirs(IMAGES_DIR, exist_ok=True)
-    modalities = ["VI", "EL", "UV"]  # filename codes from config.json (UVF -> UV)
-    cell_types = ["23-P09-B1", "23-P09-B2", "24-Q01-A3"]
-    seed = 0
-    cell_counter = 0
-    drawn_keys = set()  # defect keys actually drawn as text somewhere
-    multi_image_count = 0  # images showing more than one defect
+def image_plan():
+    """Yield (filename, modality, visible_defect_keys) for every sample image.
 
+    Single source of truth for the generated image set; generation and the
+    UI test ground truth both use it.
+    """
+    cell_types = ["23-P09-B1", "23-P09-B2", "24-Q01-A3"]
+    cell_counter = 0
     for cell_type in cell_types:
         for cell in range(1, 4):
             cell_id = f"Cell{cell:03d}"
             defects = CELL_DEFECTS[cell_counter % len(CELL_DEFECTS)]
             cell_counter += 1
-            for modality in modalities:
+            for modality in MODALITIES:
                 # deliberately leave one modality out of one group
-                if cell_type == cell_types[1] and cell == 2 and modality == "UV":
+                if cell_type == "23-P09-B2" and cell_id == "Cell002" and modality == "UV":
                     continue
                 visible = visible_defect_keys(defects, modality)
-                drawn_keys.update(visible)
-                multi_image_count += len(visible) > 1
-                seed += 1
-                name = f"{cell_type}_{modality}_{cell_id}.tif"
-                image = make_cell(modality, seed, display_names(visible))
-                tifffile.imwrite(os.path.join(IMAGES_DIR, name), image)
-                print(f"wrote {name} ({', '.join(display_names(visible)) or 'good'})")
-
-    # variant example: EL plus an EL_LR JPG variant of the same cell
+                yield f"{cell_type}_{modality}_{cell_id}.tif", modality, visible
+    # variant example: EL plus an EL_LR JPG variant with the same content
     for cell in range(1, 3):
         cell_id = f"Cell{cell:03d}"
         defects = CELL_DEFECTS[cell_counter % len(CELL_DEFECTS)]
         cell_counter += 1
         visible = visible_defect_keys(defects, "EL")
-        drawn_keys.update(visible)
-        multi_image_count += len(visible) > 1
-        seed += 1
-        data = make_cell("EL", seed, display_names(visible))
-        name = f"23_089_A1_EL_{cell_id}.tif"
-        tifffile.imwrite(os.path.join(IMAGES_DIR, name), data)
-        print(f"wrote {name} ({', '.join(display_names(visible)) or 'good'})")
-        name_lr = f"23_089_A1_EL_LR_{cell_id}.jpg"
-        Image.fromarray((data / 256).astype(np.uint8)).save(
-            os.path.join(IMAGES_DIR, name_lr), quality=90
-        )
-        print(f"wrote {name_lr}")
+        yield f"23_089_A1_EL_{cell_id}.tif", "EL", visible
+        yield f"23_089_A1_EL_LR_{cell_id}.jpg", "EL", visible
+    # full-coverage images: every defect type regardless of the visibility table
+    for modality in MODALITIES:
+        yield f"TEST_ALL_{modality}_Cell001.tif", modality, sorted(DEFECT_VISIBILITY)
 
-    # full-coverage images: one per modality showing every defect type,
-    # regardless of the visibility table (for UI testing)
-    for modality in modalities:
+
+def build_sample_images(images_dir):
+    """Write all sample images from image_plan() into images_dir.
+
+    Returns [(filename, visible_defect_keys)] for coverage checks.
+    """
+    os.makedirs(images_dir, exist_ok=True)
+    written = []
+    seed = 0
+    for filename, modality, visible in image_plan():
         seed += 1
-        name = f"TEST_ALL_{modality}_Cell001.tif"
-        image = make_cell(modality, seed, display_names(sorted(DEFECT_VISIBILITY)))
-        tifffile.imwrite(os.path.join(IMAGES_DIR, name), image)
-        drawn_keys.update(DEFECT_VISIBILITY)
-        multi_image_count += 1
-        print(f"wrote {name} (all defects)")
+        image = make_cell(modality, seed, display_names(visible))
+        if filename.lower().endswith((".tif", ".tiff")):
+            tifffile.imwrite(os.path.join(images_dir, filename), image)
+        else:
+            Image.fromarray((image / 256).astype(np.uint8)).save(
+                os.path.join(images_dir, filename), quality=90
+            )
+        written.append((filename, visible))
+    return written
+
+
+def ground_truth_labels():
+    """{filename: {label_key: 0|1}} — the labels a correct labeling session
+    of the generated images would produce (good=1 for images without any
+    visible defect, otherwise the visible defects are set)."""
+    labels = {}
+    for filename, modality, visible in image_plan():
+        row = {key: 0 for key in DEFECT_VISIBILITY}
+        if visible:
+            for key in visible:
+                row[key] = 1
+            row["good"] = 0
+        else:
+            row["good"] = 1
+        labels[filename] = row
+    return labels
+
+
+def main():
+    written = build_sample_images(IMAGES_DIR)
+    for filename, visible in written:
+        print(f"wrote {filename} ({', '.join(display_names(visible)) or 'good'})")
 
     # sanity checks: every defect type must actually be drawn somewhere, and
     # some images must show more than one defect
+    drawn_keys = {key for _, visible in written for key in visible}
+    multi_image_count = sum(1 for _, visible in written if len(visible) > 1)
     missing = set(DEFECT_VISIBILITY) - drawn_keys
     if missing:
         raise SystemExit(f"schedule does not cover defect(s): {sorted(missing)}")
     if multi_image_count < 2:
         raise SystemExit("too few images with multiple defect types")
-    print(f"coverage check passed: all {len(DEFECT_VISIBILITY)} defect types drawn, "
-          f"{multi_image_count} images with multiple defects")
+    print(
+        f"coverage check passed: all {len(DEFECT_VISIBILITY)} defect types drawn, "
+        f"{multi_image_count} images with multiple defects"
+    )
 
     # one image with an unparseable filename, to demonstrate the §10.4 handling
     bad = os.path.join(IMAGES_DIR, "badname.tif")

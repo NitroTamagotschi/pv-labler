@@ -13,8 +13,13 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-playwright>=0.9.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = '-m "not ui"'
+markers = [
+    "ui: browser-based UI tests (Playwright, run with `uv run pytest -m ui`)",
+]
