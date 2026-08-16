@@ -228,8 +228,9 @@ Falls eine Modalität einer Bildgruppe nicht vorhanden ist, muss dies sichtbar a
 
 ### 6.6 Speichern von Labeländerungen
 
-- Checkbox-Klicks ändern zunächst nur die Anzeige; gespeichert wird ausschließlich über den `Save`-Button.
+- Checkbox-Klicks ändern zunächst nur die Anzeige; gespeichert wird ausschließlich über den `Save`-Button oder die Tastenkombination `Strg+S`.
 - Der `Save`-Button befindet sich oben rechts in der Kopfzeile neben dem Anmeldebereich und zeigt die Anzahl der geänderten Bilder an; ohne ungespeicherte Änderungen ist er deaktiviert.
+- `Strg+S` löst dasselbe Speichern aus wie ein Klick auf `Save` (inklusive Neu-Laden nach Erfolg und dem Bestätigungsdialog bei Fehlern); ohne ungespeicherte Änderungen passiert nichts. Der native „Seite speichern“-Dialog des Browsers wird dabei unterdrückt.
 - Beim Klick auf `Save` werden alle ungespeicherten Änderungen in `labels.csv` und im Änderungslog persistiert. Danach wird die Ansicht neu geladen; Bilder, die nicht mehr zum aktuellen Tab-Filter passen, verschwinden aus der Galerie. Tab-Filter, Modalität und Zelltyp-Filter bleiben dabei erhalten.
 - Solange ungespeicherte Änderungen vorliegen, fragt der Browser beim Verlassen der Seite (Tab-Wechsel, Modalitätswechsel, Logout, Schließen oder Aktualisieren der Seite) über einen Bestätigungsdialog nach. Nicht gespeicherte Änderungen gehen beim Verlassen verloren.
 - Die Tab-Zählungen aktualisieren sich erst nach dem Speichern.
@@ -337,7 +338,7 @@ Das Änderungslog wird ausschließlich ergänzt; bestehende Einträge dürfen ni
 
 - HTML mit Jinja2-Templates
 - CSS für responsives Layout
-- JavaScript für unmittelbare UI-Aktualisierungen und das Speichern über den `Save`-Button (AJAX) sowie den Bestätigungsdialog beim Verlassen
+- JavaScript für unmittelbare UI-Aktualisierungen und das Speichern über den `Save`-Button bzw. `Strg+S` (AJAX) sowie den Bestätigungsdialog beim Verlassen
 - Modal/Pop-up für die Bildgruppenansicht mit synchronem Zoom und In-Browser-Dekodierung der Original-TIFFs (vendored UTIF-Bibliothek, kein CDN)
 - `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters (Regler und Zahleneingabe, schreibt über einen AJAX-Endpoint in die `config.json`)
 
@@ -421,3 +422,4 @@ Die Implementierung gilt als funktionsfähig, wenn alle folgenden Kriterien erf�
 19. Die Originaldatei kann aus der Bildgruppenansicht heruntergeladen werden.
 20. Das `Preview-Window`-Panel stellt das Vorschau-Fenster der gewählten Modalität ein (Regler und Zahleneingabe) und schreibt Änderungen in die `config.json` zurück; das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt.
 21. Breite und Höhe des Bildgruppen-Pop-ups folgen den optionalen Config-Werten `modal_max_width` und `modal_max_height`.
+22. Die Tastenkombination `Strg+S` speichert alle ungespeicherten Änderungen wie ein Klick auf `Save`; ohne ungespeicherte Änderungen passiert nichts und die Seite lädt nicht neu.

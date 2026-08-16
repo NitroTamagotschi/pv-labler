@@ -561,6 +561,15 @@
     }
 
     document.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        // preventDefault keeps the browser's "Save page" dialog from opening;
+        // the disabled button doubles as the nothing-to-save / save-in-flight guard
+        event.preventDefault();
+        if (!document.getElementById("save-btn").disabled) {
+          saveChanges();
+        }
+        return;
+      }
       if (event.key === "Escape") {
         if (!modal.hidden) {
           closeGroupModal();

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import expect
+from playwright.sync_api import TimeoutError, expect
 
 pytestmark = pytest.mark.ui
 
@@ -66,6 +66,35 @@ def test_revert_clears_dirtiness(login, live_server):
     crack.click()  # back to the initial state
     expect(page.locator("#save-btn")).to_be_disabled()
     assert not live_server["labels_csv"].exists()  # nothing persisted without Save
+
+
+def test_ctrl_s_saves_like_button(login, live_server):
+    """Ctrl+S persists pending changes exactly like clicking the Save button."""
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=EL&tab=unclassified")
+    card = page.locator('[data-filename="TEST_ALL_EL_Cell001.tif"]')
+    card.locator('.label-checkbox[data-key="crack"]').click()
+    expect(page.locator("#save-btn")).to_be_enabled()
+    page.keyboard.press("Control+s")
+    expect(page.locator("#save-btn")).to_have_text("Save")  # only after the reload
+    expect(card).to_have_count(0)  # card left Unclassified via the reload
+    assert live_server["labels_csv"].exists()
+    page.goto(base + "/main?modality=EL&tab=crack")
+    card = page.locator('[data-filename="TEST_ALL_EL_Cell001.tif"]')
+    expect(card.locator('.label-checkbox[data-key="crack"]')).to_be_checked()
+
+
+def test_ctrl_s_clean_state_is_noop(login, live_server):
+    """Ctrl+S with a clean state does not navigate and persists nothing."""
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=EL&tab=unclassified")
+    expect(page.locator("#save-btn")).to_be_disabled()
+    with pytest.raises(TimeoutError):
+        with page.expect_navigation(timeout=2000):
+            page.keyboard.press("Control+s")
+    assert not live_server["labels_csv"].exists()
 
 
 def test_group_modal_shows_missing_modality(login, live_server):
