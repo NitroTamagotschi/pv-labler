@@ -4,6 +4,7 @@ Implements specification/specification.md: name-based login, gallery with
 modality dropdown and label-filter tabs, checkbox labeling with the Good
 exclusivity rules, group view pop-up and CSV/change-log persistence.
 """
+
 import json
 import os
 import re
@@ -35,16 +36,20 @@ PREVIEWS_DIR = os.path.join(BASE_DIR, "static", "previews")
 LABEL_KEY_PATTERN = re.compile(r"^[a-z0-9_]+$")
 MODALITY_CODE_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
 
+# tab keys that are not labels; they can never be configured as label keys
+RESERVED_TAB_KEYS = ("unclassified", "all")
+
 
 def load_config(path=CONFIG_PATH):
     """Load and validate config.json (specification §3.3)."""
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         config = json.load(f)
     _validate_config(config)
     return config
 
 
 def _validate_config(config):
+    """Raise ValueError for invalid config.json contents."""
     modalities = config.get("modalities")
     if not isinstance(modalities, list) or not modalities:
         raise ValueError("config.json: 'modalities' must be a non-empty list")
@@ -79,13 +84,23 @@ def _validate_config(config):
     for key in keys:
         if not key or not LABEL_KEY_PATTERN.fullmatch(key):
             raise ValueError(f"config.json: invalid label key {key!r}")
-        if key in ("all", "unclassified"):
+        if key in RESERVED_TAB_KEYS:
             raise ValueError(f"config.json: label key {key!r} is reserved")
     if len(set(keys)) != len(keys):
         raise ValueError("config.json: duplicate label keys")
 
 
+def _matches_tab(state, tab, is_unclassified):
+    """Return whether a label state belongs to the given tab view."""
+    if tab == "unclassified":
+        return is_unclassified
+    if tab == "all":
+        return True
+    return bool(state.get(tab, 0))
+
+
 def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, previews_dir=None):
+    """Create the Flask app wired to the given config and storage locations."""
     app = Flask(__name__)
     app.secret_key = os.environ.get("PV_LABLER_SECRET_KEY", "dev-secret-key-change-me")
     config = config if config is not None else load_config()
@@ -100,18 +115,18 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
     app.config["PV_INDEX"] = images.ImageIndex(
         images_dir, images.modality_filename_codes(config["modalities"]), log=app.logger.warning
     )
-    app.config["PV_PREVIEWS"] = previews.PreviewGenerator(
-        images_dir, previews_dir or PREVIEWS_DIR
-    )
+    app.config["PV_PREVIEWS"] = previews.PreviewGenerator(images_dir, previews_dir or PREVIEWS_DIR)
 
     @app.route("/")
     def index():
+        """Render the login page, or redirect a logged-in user to main."""
         if "name" in session:
             return redirect(url_for("main"))
         return render_template("login.html")
 
     @app.route("/login", methods=["POST"])
     def login():
+        """Store the submitted user name in the session and redirect to main."""
         name = (request.form.get("name") or "").strip()
         if not name:
             return render_template("login.html", error="Please enter your name."), 400
@@ -120,11 +135,13 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
 
     @app.route("/logout")
     def logout():
+        """Clear the session and return to the login page."""
         session.clear()
         return redirect(url_for("index"))
 
     @app.route("/main")
     def main():
+        """Render the main window: gallery, tabs and filters for the session."""
         if "name" not in session:
             return redirect(url_for("index"))
         cfg = app.config["PV_CONFIG"]
@@ -132,7 +149,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         good_key = cfg["labels"]["good"]["key"]
         defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
         label_keys = [good_key] + defect_keys
-        valid_tabs = ["unclassified"] + label_keys + ["all"]
+        valid_tabs = [RESERVED_TAB_KEYS[0], *label_keys, RESERVED_TAB_KEYS[1]]
 
         modality = request.args.get("modality", modality_codes[0])
         if modality != "all" and modality not in modality_codes:
@@ -152,7 +169,6 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         type_counts = {t: 0 for t in all_types}
 
         counts = {t: 0 for t in valid_tabs}
-        total = 0
         cards = []
         modality_displays = {m["code"]: m["display_name"] for m in cfg["modalities"]}
         for filename, info in all_images.items():
@@ -161,22 +177,16 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
             type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
             if selected_types and info.cell_type not in selected_types:
                 continue
-            total += 1
             state = states.get(filename, {})
             is_unclassified = not state.get(good_key, 0) and not any(
                 state.get(k, 0) for k in defect_keys
             )
-            if is_unclassified:
-                counts["unclassified"] += 1
-            else:
-                for key in label_keys:
-                    if state.get(key, 0):
-                        counts[key] += 1
-            if tab != "all":
-                if tab == "unclassified" and not is_unclassified:
-                    continue
-                if tab != "unclassified" and not state.get(tab, 0):
-                    continue
+            # one predicate drives both the tab counts and the card filter
+            for t in valid_tabs:
+                if _matches_tab(state, t, is_unclassified):
+                    counts[t] += 1
+            if not _matches_tab(state, tab, is_unclassified):
+                continue
             cards.append(
                 {
                     "filename": filename,
@@ -190,13 +200,16 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
 
         tabs = [
             {"key": "unclassified", "label": "Unclassified", "count": counts["unclassified"]},
-            {"key": good_key, "label": cfg["labels"]["good"]["display_name"], "count": counts[good_key]},
+            {
+                "key": good_key,
+                "label": cfg["labels"]["good"]["display_name"],
+                "count": counts[good_key],
+            },
         ]
         tabs.extend(
             {"key": d["key"], "label": d["display_name"], "count": counts[d["key"]]}
             for d in cfg["labels"]["defects"]
         )
-        counts["all"] = total
         tabs.append({"key": "all", "label": "All", "count": counts["all"]})
         if not selected_types:
             cell_type_label = "All"
@@ -224,6 +237,11 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
 
     @app.route("/api/save", methods=["POST"])
     def api_save():
+        """Persist the pending label changes of the Save button in one batch.
+
+        Body: {"changes": {filename: {key: 0|1}}}. Everything is validated
+        before the first write, so a failed request never partially persists.
+        """
         if "name" not in session:
             return jsonify(ok=False, error="Not logged in"), 401
         data = request.get_json(silent=True) or {}
@@ -232,14 +250,14 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
             return jsonify(ok=False, error="No changes to save"), 400
         all_images, _ = app.config["PV_INDEX"].get()
         updates = {}
-        for filename, labels in changes.items():
+        for filename, label_state in changes.items():
             filename = str(filename)
             info = all_images.get(filename)
             if info is None:
                 return jsonify(ok=False, error=f"Unknown image: {filename}"), 404
-            if not isinstance(labels, dict):
+            if not isinstance(label_state, dict):
                 return jsonify(ok=False, error="Invalid label state"), 400
-            updates[filename] = (info.modality, labels)
+            updates[filename] = (info.modality, label_state)
         try:
             states = app.config["PV_STORE"].set_states(updates, session["name"])
         except ValueError as exc:
@@ -248,6 +266,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
 
     @app.route("/api/group/<path:filename>")
     def api_group(filename):
+        """Return the images of one group with their previews (JSON)."""
         if "name" not in session:
             return jsonify(ok=False, error="Not logged in"), 401
         all_images, groups = app.config["PV_INDEX"].get()
@@ -283,6 +302,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
 
     @app.route("/preview")
     def preview():
+        """Serve the cached JPEG preview of one image file."""
         if "name" not in session:
             abort(401)
         filename = request.args.get("file", "")

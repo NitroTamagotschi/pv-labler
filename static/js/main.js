@@ -3,41 +3,47 @@
 
   const APP = window.APP;
   const labelKeys = [APP.goodKey, ...APP.defectKeys];
-  let dirty = false;
+  // {card, checkboxes} pairs collected once at startup: the gallery is static
+  let cardEntries = [];
 
-  function getCheckbox(card, key) {
-    return card.querySelector(`.label-checkbox[data-key="${key}"]`);
+  function collectCheckboxes(card) {
+    const checkboxes = {};
+    for (const key of labelKeys) {
+      checkboxes[key] = card.querySelector(`.label-checkbox[data-key="${key}"]`);
+    }
+    return checkboxes;
   }
 
   // full current checkbox state of one card {key: 0|1}
-  function cardState(card) {
+  function cardState(entry) {
     const state = {};
     for (const key of labelKeys) {
-      state[key] = getCheckbox(card, key).checked ? 1 : 0;
+      state[key] = entry.checkboxes[key].checked ? 1 : 0;
     }
     return state;
   }
 
   // defaultChecked holds the server-rendered state, so reverting a checkbox
   // to its initial value automatically makes the card clean again
-  function cardIsDirty(card) {
+  function cardIsDirty(entry) {
     for (const key of labelKeys) {
-      if (getCheckbox(card, key).checked !== getCheckbox(card, key).defaultChecked) {
+      const checkbox = entry.checkboxes[key];
+      if (checkbox.checked !== checkbox.defaultChecked) {
         return true;
       }
     }
     return false;
   }
 
-  function applyCardState(card, state) {
+  function applyCardState(entry, state) {
     for (const key of labelKeys) {
-      getCheckbox(card, key).checked = !!state[key];
+      entry.checkboxes[key].checked = !!state[key];
     }
   }
 
   // mirror of labels.apply_label_change: Good clears defects and vice versa
-  function applyLocalChange(card, key, checked) {
-    const state = cardState(card);
+  function applyLocalChange(entry, key, checked) {
+    const state = cardState(entry);
     state[key] = checked ? 1 : 0;
     if (key === APP.goodKey && checked) {
       for (const defect of APP.defectKeys) {
@@ -47,27 +53,26 @@
     if (APP.defectKeys.includes(key) && checked) {
       state[APP.goodKey] = 0;
     }
-    applyCardState(card, state);
+    applyCardState(entry, state);
   }
 
   function refreshSaveButton() {
     let count = 0;
-    for (const card of document.querySelectorAll(".card")) {
-      if (cardIsDirty(card)) {
+    for (const entry of cardEntries) {
+      if (cardIsDirty(entry)) {
         count += 1;
       }
     }
-    dirty = count > 0;
     const button = document.getElementById("save-btn");
-    button.disabled = !dirty;
-    button.textContent = dirty ? `Save (${count})` : "Save";
+    button.disabled = count === 0;
+    button.textContent = count ? `Save (${count})` : "Save";
   }
 
   async function saveChanges() {
     const changes = {};
-    for (const card of document.querySelectorAll(".card")) {
-      if (cardIsDirty(card)) {
-        changes[card.dataset.filename] = cardState(card);
+    for (const entry of cardEntries) {
+      if (cardIsDirty(entry)) {
+        changes[entry.card.dataset.filename] = cardState(entry);
       }
     }
     const button = document.getElementById("save-btn");
@@ -76,7 +81,7 @@
       const response = await fetch(APP.saveUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ changes: changes }),
+        body: JSON.stringify({ changes }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -84,9 +89,8 @@
         refreshSaveButton();
         return;
       }
-      // clear BEFORE reload, otherwise the beforeunload dialog would ask
-      // for confirmation after every successful save
-      dirty = false;
+      // leave the button disabled: it doubles as the beforeunload guard, so
+      // the reload itself does not trigger the leave-site dialog
       location.reload();
     } catch (error) {
       window.alert("Save failed: " + error);
@@ -95,7 +99,8 @@
   }
 
   window.addEventListener("beforeunload", (event) => {
-    if (dirty) {
+    // the disabled button doubles as the unsaved-changes flag
+    if (!document.getElementById("save-btn").disabled) {
       event.preventDefault();
       event.returnValue = "";
     }
@@ -144,22 +149,25 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    const cards = document.querySelectorAll(".card");
-    for (const card of cards) {
-      card.addEventListener("change", (event) => {
+    cardEntries = [...document.querySelectorAll(".card")].map((card) => ({
+      card: card,
+      checkboxes: collectCheckboxes(card),
+    }));
+    for (const entry of cardEntries) {
+      entry.card.addEventListener("change", (event) => {
         const checkbox = event.target;
         if (checkbox.classList.contains("label-checkbox")) {
-          applyLocalChange(card, checkbox.dataset.key, checkbox.checked);
+          applyLocalChange(entry, checkbox.dataset.key, checkbox.checked);
           refreshSaveButton();
         }
       });
-      for (const button of card.querySelectorAll(".card-image, .card-name")) {
-        button.addEventListener("click", () => openGroupModal(card.dataset.filename));
+      for (const button of entry.card.querySelectorAll(".card-image, .card-name")) {
+        button.addEventListener("click", () => openGroupModal(entry.card.dataset.filename));
       }
     }
     const empty = document.querySelector(".gallery .empty");
     if (empty) {
-      empty.hidden = cards.length > 0;
+      empty.hidden = cardEntries.length > 0;
     }
     const modal = document.getElementById("group-modal");
     document.getElementById("save-btn").addEventListener("click", saveChanges);

@@ -17,6 +17,7 @@ visibility table.
 what gets generated; the Playwright UI tests use them to verify the labeling
 round trip.
 """
+
 import os
 
 import numpy as np
@@ -61,6 +62,7 @@ CELL_DEFECTS = [
 
 
 def load_font(size):
+    """Return a usable TrueType font, falling back to the PIL default."""
     try:
         windows_fonts = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts")
         return ImageFont.truetype(os.path.join(windows_fonts, "arial.ttf"), size)
@@ -84,10 +86,11 @@ def draw_defects(img, defect_names):
         draw.rectangle([margin - 4, y - 4, margin + w + 4, y + h + 4], fill=30)
         draw.text((margin, y), name, fill=255, font=font)
         y += h + gap
-    return (np.asarray(canvas).astype(np.uint16) * 257)
+    return np.asarray(canvas).astype(np.uint16) * 257
 
 
 def make_cell(modality, seed, defect_names):
+    """Render one synthetic cell image for a modality with the given defects."""
     rng = np.random.default_rng(seed)
     yy, xx = np.mgrid[0:SIZE, 0:SIZE]
     radius = np.hypot(xx - SIZE / 2, yy - SIZE / 2)
@@ -168,11 +171,13 @@ def build_sample_images(images_dir):
 
 
 def ground_truth_labels():
-    """{filename: {label_key: 0|1}} — the labels a correct labeling session
-    of the generated images would produce (good=1 for images without any
-    visible defect, otherwise the visible defects are set)."""
+    """Return {filename: {label_key: 0|1}} for a correct labeling session.
+
+    Good is set for images without any visible defect, otherwise the visible
+    defects are set.
+    """
     labels = {}
-    for filename, modality, visible in image_plan():
+    for filename, _modality, visible in image_plan():
         row = {key: 0 for key in DEFECT_VISIBILITY}
         if visible:
             for key in visible:
@@ -185,6 +190,7 @@ def ground_truth_labels():
 
 
 def main():
+    """Generate the sample image set into data/images/ and sanity-check it."""
     written = build_sample_images(IMAGES_DIR)
     for filename, visible in written:
         print(f"wrote {filename} ({', '.join(display_names(visible)) or 'good'})")

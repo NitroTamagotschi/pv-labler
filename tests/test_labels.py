@@ -1,4 +1,5 @@
 """Tests for the label rules, CSV persistence and change log (labels.py)."""
+
 import csv
 import re
 from pathlib import Path
@@ -30,16 +31,25 @@ GOOD = "good"
 DEFECTS = [d["key"] for d in CONFIG["labels"]["defects"]]
 
 EXPECTED_COLUMNS = [
-    "Datum", "Zeit", "Name of labeler", "datename",
-    "uv", "vi", "el", "good",
-    "crack", "cross", "dark", "corrosion", "discoloration", "delamination",
+    "Datum",
+    "Zeit",
+    "Name of labeler",
+    "datename",
+    "uv",
+    "vi",
+    "el",
+    "good",
+    "crack",
+    "cross",
+    "dark",
+    "corrosion",
+    "discoloration",
+    "delamination",
 ]
 
 
 def make_store(tmp_path):
-    return LabelStore(
-        str(tmp_path / "labels.csv"), str(tmp_path / "change_log.txt"), CONFIG
-    )
+    return LabelStore(str(tmp_path / "labels.csv"), str(tmp_path / "change_log.txt"), CONFIG)
 
 
 def read_csv(path):
@@ -174,6 +184,7 @@ def test_change_log_format_and_append_only(tmp_path):
 
 
 def test_set_states_batch_writes_one_row_per_file(tmp_path):
+    """One batch writes one row per file with the right modality column."""
     store = make_store(tmp_path)
     results = store.set_states(
         {
@@ -187,12 +198,16 @@ def test_set_states_batch_writes_one_row_per_file(tmp_path):
     rows = read_csv(store.csv_path)
     assert len(rows) == 2
     by_name = {row["datename"]: row for row in rows}
-    assert (by_name["23-P09-B1_EL_Cell001.tif"]["uv"],
-            by_name["23-P09-B1_EL_Cell001.tif"]["vi"],
-            by_name["23-P09-B1_EL_Cell001.tif"]["el"]) == ("0", "0", "1")
-    assert (by_name["23-P09-B1_VI_Cell002.tif"]["uv"],
-            by_name["23-P09-B1_VI_Cell002.tif"]["vi"],
-            by_name["23-P09-B1_VI_Cell002.tif"]["el"]) == ("0", "1", "0")
+    assert (
+        by_name["23-P09-B1_EL_Cell001.tif"]["uv"],
+        by_name["23-P09-B1_EL_Cell001.tif"]["vi"],
+        by_name["23-P09-B1_EL_Cell001.tif"]["el"],
+    ) == ("0", "0", "1")
+    assert (
+        by_name["23-P09-B1_VI_Cell002.tif"]["uv"],
+        by_name["23-P09-B1_VI_Cell002.tif"]["vi"],
+        by_name["23-P09-B1_VI_Cell002.tif"]["el"],
+    ) == ("0", "1", "0")
     # one log entry per changed file
     lines = Path(store.log_path).read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
@@ -201,6 +216,7 @@ def test_set_states_batch_writes_one_row_per_file(tmp_path):
 
 
 def test_set_states_cascades_from_stored_state(tmp_path):
+    """Good saved in a batch clears a defect stored by an earlier save."""
     store = make_store(tmp_path)
     filename = "23-P09-B1_EL_Cell001.tif"
     store.set_label(filename, "EL", "crack", 1, "Max")
@@ -214,6 +230,7 @@ def test_set_states_cascades_from_stored_state(tmp_path):
 
 
 def test_set_states_skips_unchanged(tmp_path):
+    """A batch whose state equals the stored one writes neither CSV nor log."""
     store = make_store(tmp_path)
     filename = "23-P09-B1_EL_Cell001.tif"
     store.set_label(filename, "EL", "crack", 1, "Max")
@@ -225,14 +242,14 @@ def test_set_states_skips_unchanged(tmp_path):
 
 
 def test_set_states_rejects_unknown_key(tmp_path):
+    """A batch containing a key outside the config is rejected."""
     store = make_store(tmp_path)
     with pytest.raises(ValueError):
         store.set_states({"23-P09-B1_EL_Cell001.tif": ("EL", {"nope": 1})}, "Max")
 
 
 def test_set_states_rejects_good_defect_conflict(tmp_path):
+    """A batch combining Good with a defect is rejected (order-independently)."""
     store = make_store(tmp_path)
     with pytest.raises(ValueError):
-        store.set_states(
-            {"23-P09-B1_EL_Cell001.tif": ("EL", {"good": 1, "crack": 1})}, "Max"
-        )
+        store.set_states({"23-P09-B1_EL_Cell001.tif": ("EL", {"good": 1, "crack": 1})}, "Max")

@@ -1,4 +1,5 @@
 """Tests for the TIFF-to-JPEG preview generation (previews.py)."""
+
 import numpy as np
 import pytest
 import tifffile
@@ -21,7 +22,9 @@ def _write_tiff(images_dir, name, data):
 def test_generate_uint16_preview(generator):
     images_dir, gen = generator
     rng = np.random.default_rng(1)
-    _write_tiff(images_dir, "23-P09-B1_EL_Cell001.tif", rng.integers(0, 65535, (200, 300), dtype=np.uint16))
+    _write_tiff(
+        images_dir, "23-P09-B1_EL_Cell001.tif", rng.integers(0, 65535, (200, 300), dtype=np.uint16)
+    )
     path = gen.get_preview_path("23-P09-B1_EL_Cell001.tif")
     assert path.endswith(".jpg")
     with Image.open(path) as img:

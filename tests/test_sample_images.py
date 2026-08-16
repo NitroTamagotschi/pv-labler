@@ -1,4 +1,5 @@
 """Tests for the sample image schedule (scripts/create_sample_images.py)."""
+
 import importlib.util
 from pathlib import Path
 

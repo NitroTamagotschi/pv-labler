@@ -1,4 +1,5 @@
 """Browser smoke tests for the main labeling workflow (Playwright)."""
+
 import pytest
 from playwright.sync_api import expect
 
@@ -8,6 +9,7 @@ DEFECT_KEYS = ["crack", "cross", "dark", "corrosion", "discoloration", "delamina
 
 
 def test_login_and_gallery(login):
+    """The gallery shows all tabs (incl. the trailing All tab) and cards."""
     page = login
     # Unclassified + Good + one tab per defect + All (last)
     expect(page.locator(".tab")).to_have_count(len(DEFECT_KEYS) + 3)
@@ -16,7 +18,12 @@ def test_login_and_gallery(login):
     expect(page.locator("#modality")).to_contain_text("All")
 
 
-def test_checkbox_good_exclusivity(login, live_server):
+def test_checkbox_good_exclusivity(login, live_server, save_and_wait):
+    """Verify pending and persisted Good exclusivity.
+
+    Pending clicks stay in the current tab; saving persists Good and clears
+    the previously clicked defect from the card and the Crack tab.
+    """
     page = login
     base = live_server["base_url"]
     page.goto(base + "/main?modality=EL&tab=unclassified")
@@ -33,9 +40,8 @@ def test_checkbox_good_exclusivity(login, live_server):
     expect(card.locator('.label-checkbox[data-key="crack"]')).not_to_be_checked()
     expect(card).to_be_visible()
     # saving reloads the page: the card leaves Unclassified and lands in Good
-    page.locator("#save-btn").click()
+    save_and_wait()
     expect(card).to_have_count(0)  # only true after the reload
-    expect(page.locator("#save-btn")).to_have_text("Save")  # fresh, clean button
     page.goto(base + "/main?modality=EL&tab=good")
     card = page.locator('[data-filename="TEST_ALL_EL_Cell001.tif"]')
     expect(card).to_be_visible()
@@ -47,6 +53,7 @@ def test_checkbox_good_exclusivity(login, live_server):
 
 
 def test_revert_clears_dirtiness(login, live_server):
+    """Clicking a checkbox back to its initial state removes it from Save."""
     page = login
     base = live_server["base_url"]
     page.goto(base + "/main?modality=EL&tab=unclassified")

@@ -4,6 +4,7 @@ The CSV layout is defined in specification.md §8.2: one current row per image
 file, updated in place instead of duplicated. All writes are serialized with a
 lock and done atomically (temp file + os.replace).
 """
+
 import csv
 import datetime as dt
 import os
@@ -60,6 +61,7 @@ class LabelStore:
     """Reads and writes labels.csv and appends change-log entries."""
 
     def __init__(self, csv_path, log_path, config):
+        """Store paths, column layout and label keys; create the write lock."""
         self.csv_path = csv_path
         self.log_path = log_path
         self.modality_cols = modality_columns([m["code"] for m in config["modalities"]])
@@ -76,7 +78,7 @@ class LabelStore:
         rows = {}
         if not os.path.isfile(self.csv_path):
             return rows
-        with open(self.csv_path, "r", encoding="utf-8", newline="") as f:
+        with open(self.csv_path, encoding="utf-8", newline="") as f:
             for raw in csv.DictReader(f):
                 filename = (raw.get("datename") or "").strip()
                 if not filename:
@@ -85,9 +87,8 @@ class LabelStore:
         return rows
 
     def _parse_labels(self, raw):
-        return {
-            key: 1 if str(raw.get(key, "")).strip() == "1" else 0 for key in self.label_keys
-        }
+        """Return {label_key: 0|1} parsed from one raw CSV row."""
+        return {key: 1 if str(raw.get(key, "")).strip() == "1" else 0 for key in self.label_keys}
 
     def get_states(self):
         """Return {filename: {label_key: 0|1}} for all stored rows."""
@@ -133,35 +134,31 @@ class LabelStore:
         skipped entirely. All changes are written under a single lock hold.
         """
         now = dt.datetime.now()
+        label_key_set = set(self.label_keys)
         with self._lock:
             rows = self._read_rows()
             results = {}
             log_entries = []
             for filename, (modality_code, new_state) in updates.items():
-                unknown = set(new_state) - set(self.label_keys)
+                unknown = set(new_state) - label_key_set
                 if unknown:
                     raise ValueError(f"Unknown label key(s): {sorted(unknown)}")
-                if new_state.get(self.good_key) and any(
-                    new_state.get(d) for d in self.defect_keys
-                ):
+                if new_state.get(self.good_key) and any(new_state.get(d) for d in self.defect_keys):
                     raise ValueError("Good cannot be combined with a defect label")
                 before = self._parse_labels(rows.get(filename, {}))
-                after = dict(before)
+                after = before  # apply_label_change always builds a fresh dict
                 for key, value in new_state.items():
                     after = apply_label_change(
                         after, self.good_key, self.defect_keys, key, 1 if value else 0
                     )
                 if after == before:
                     continue
-                rows[filename] = self._build_row(
-                    filename, modality_code, after, labeler, now
-                )
+                rows[filename] = self._build_row(filename, modality_code, after, labeler, now)
                 results[filename] = after
                 log_entries.append((now, labeler, filename, before, after))
             if log_entries:
                 self._write_csv(rows.values())
-                for entry in log_entries:
-                    self._append_log(*entry)
+                self._append_logs(log_entries)
         return results
 
     def _build_row(self, filename, modality_code, labels, labeler, now):
@@ -196,17 +193,25 @@ class LabelStore:
                 pass
             raise
 
-    def _append_log(self, now, labeler, filename, before, after):
-        """Append one entry to the change log (existing entries are never rewritten)."""
+    def _log_line(self, now, labeler, filename, before, after):
+        """Format one change-log entry (timestamp | labeler | file | before | after)."""
 
         def fmt(state):
             return ", ".join(f"{key}={state.get(key, 0)}" for key in self.label_keys)
 
-        line = (
+        return (
             f"{now.strftime('%Y-%m-%d %H:%M:%S')} | {labeler} | {filename} | "
             f"before: {fmt(before)} | after: {fmt(after)}"
         )
+
+    def _append_log(self, now, labeler, filename, before, after):
+        """Append one entry to the change log (existing entries are never rewritten)."""
+        self._append_logs([(now, labeler, filename, before, after)])
+
+    def _append_logs(self, entries):
+        """Append several change-log entries in a single file open."""
         directory = os.path.dirname(os.path.abspath(self.log_path))
         os.makedirs(directory, exist_ok=True)
         with open(self.log_path, "a", encoding="utf-8", newline="\n") as f:
-            f.write(line + "\n")
+            for entry in entries:
+                f.write(self._log_line(*entry) + "\n")

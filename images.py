@@ -14,6 +14,7 @@ identifier is the rightmost segment matching "Cell<digits>" (fallback: the
 last segment). Segments between modality and cell identifier, plus trailing
 segments, form the variant.
 """
+
 import functools
 import os
 import re
@@ -38,6 +39,7 @@ class ImageInfo:
     __slots__ = ("filename", "cell_type", "modality", "cell_id", "variant", "group_key")
 
     def __init__(self, filename, cell_type, modality, cell_id, variant=None):
+        """Store the parsed filename metadata of one image."""
         self.filename = filename
         self.cell_type = cell_type
         self.modality = modality
@@ -134,9 +136,7 @@ def scan_images(images_dir, filename_codes, log=None):
                 unparseable.append(name)
                 continue
             images[info.filename] = info
-            variant_group = groups.setdefault(info.group_key, {}).setdefault(
-                info.modality, {}
-            )
+            variant_group = groups.setdefault(info.group_key, {}).setdefault(info.modality, {})
             variant_group[info.variant] = info
     if log is not None:
         for name in unparseable:
@@ -148,6 +148,7 @@ class ImageIndex:
     """Scans the image directory once per directory change, then serves the cache."""
 
     def __init__(self, images_dir, filename_codes, log=None):
+        """Store the image directory, modality codes and an empty cache."""
         self.images_dir = images_dir
         self.filename_codes = dict(filename_codes)
         self.log = log
@@ -155,7 +156,7 @@ class ImageIndex:
         self._signature = None
 
     def _dir_signature(self):
-        """Directory mtime plus entry count.
+        """Return the directory mtime plus entry count.
 
         The entry count guards against filesystems with coarse timestamp
         resolution, where a freshly added file may not change the directory
@@ -172,9 +173,7 @@ class ImageIndex:
         """Return the current (images, groups) tuple, rescanning if needed."""
         signature = self._dir_signature()
         if self._cache is None or signature != self._signature:
-            images, groups, _ = scan_images(
-                self.images_dir, self.filename_codes, log=self.log
-            )
+            images, groups, _ = scan_images(self.images_dir, self.filename_codes, log=self.log)
             self._cache = (images, groups)
             self._signature = signature
         return self._cache

@@ -3,6 +3,7 @@
 The original TIFF files are only ever read, never modified. Generated previews
 are cached in static/previews/ and keyed by filename and source mtime.
 """
+
 import hashlib
 import os
 import threading
@@ -22,7 +23,10 @@ class PreviewError(Exception):
 
 
 class PreviewGenerator:
+    """Generate and cache JPEG previews of the images in images_dir."""
+
     def __init__(self, images_dir, previews_dir):
+        """Store the image and preview directories and a generation lock."""
         self.images_dir = os.path.abspath(images_dir)
         self.previews_dir = previews_dir
         self._lock = threading.Lock()
@@ -48,14 +52,16 @@ class PreviewGenerator:
         return cache_path
 
     def _cache_name(self, filename, source):
+        """Return the preview cache filename keyed by filename and source mtime."""
         mtime = os.stat(source).st_mtime_ns
-        digest = hashlib.sha256(f"{filename}|{mtime}".encode("utf-8")).hexdigest()[:16]
+        digest = hashlib.sha256(f"{filename}|{mtime}".encode()).hexdigest()[:16]
         stem = "".join(
             c if c.isalnum() or c in "-_" else "_" for c in os.path.splitext(filename)[0]
         )
         return f"{stem}_{digest}.jpg"
 
     def _generate(self, source, cache_path):
+        """Write the cached JPEG preview for one source image (atomic replace)."""
         data = self._read_source(source)
         image = Image.fromarray(self._to_uint8(data))
         image.thumbnail((PREVIEW_MAX_SIZE, PREVIEW_MAX_SIZE), Image.Resampling.LANCZOS)
@@ -82,29 +88,15 @@ class PreviewGenerator:
                     with Image.open(source) as img:
                         return np.asarray(img)
                 except Exception:
-                    raise PreviewError(
-                        f"Cannot read {os.path.basename(source)}: {exc}"
-                    ) from exc
+                    raise PreviewError(f"Cannot read {os.path.basename(source)}: {exc}") from exc
         try:
             with Image.open(source) as img:
                 return np.asarray(img)
         except Exception as exc:
             raise PreviewError(f"Cannot read {os.path.basename(source)}: {exc}") from exc
-        image = Image.fromarray(self._to_uint8(data))
-        image.thumbnail((PREVIEW_MAX_SIZE, PREVIEW_MAX_SIZE), Image.Resampling.LANCZOS)
-        os.makedirs(self.previews_dir, exist_ok=True)
-        tmp_path = cache_path + ".tmp"
-        try:
-            image.save(tmp_path, format="JPEG", quality=PREVIEW_QUALITY)
-            os.replace(tmp_path, cache_path)
-        except BaseException:
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
-            raise
 
     def _to_uint8(self, data):
+        """Convert arbitrary image data to an 8-bit RGB-safe array."""
         arr = np.asarray(data)
         if arr.size == 0:
             raise PreviewError("Empty image")

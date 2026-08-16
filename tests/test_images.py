@@ -1,4 +1,5 @@
 """Tests for filename parsing, scanning and grouping (images.py)."""
+
 import pytest
 
 from images import ImageIndex, modality_filename_codes, parse_filename, scan_images
@@ -47,9 +48,7 @@ def test_filename_code_override():
 
 
 def test_filename_code_case_insensitive():
-    mapping = modality_filename_codes(
-        [{"code": "EL", "display_name": "EL", "filename_code": "el"}]
-    )
+    mapping = modality_filename_codes([{"code": "EL", "display_name": "EL", "filename_code": "el"}])
     info = parse_filename("23-P09-B1_el_Cell001.tif", mapping)
     assert info is not None
     assert info.modality == "EL"

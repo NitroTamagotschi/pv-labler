@@ -1,4 +1,5 @@
 """Fixtures for the Playwright UI tests: a live app instance with sample images."""
+
 import importlib.util
 import threading
 import time
@@ -6,12 +7,14 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import expect
 from werkzeug.serving import make_server
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def load_sample_script():
+    """Load the sample-image generator script as a module."""
     spec = importlib.util.spec_from_file_location(
         "create_sample_images", ROOT / "scripts" / "create_sample_images.py"
     )
@@ -22,6 +25,7 @@ def load_sample_script():
 
 @pytest.fixture(scope="session")
 def sample_script():
+    """Return the sample-image generator script loaded as a module."""
     return load_sample_script()
 
 
@@ -62,6 +66,7 @@ def live_server(tmp_path, sample_script):
 
 
 def _wait_until_ready(base_url, timeout=15):
+    """Poll base_url until the server answers with HTTP 200."""
     deadline = time.monotonic() + timeout
     while True:
         try:
@@ -87,4 +92,16 @@ def login(page, live_server):
 
 @pytest.fixture
 def truth(sample_script):
+    """Return the ground truth labels of the generated sample images."""
     return sample_script.ground_truth_labels()
+
+
+@pytest.fixture
+def save_and_wait(page):
+    """Click the Save button and wait until the reloaded page shows a clean button."""
+
+    def _save():
+        page.locator("#save-btn").click()
+        expect(page.locator("#save-btn")).to_have_text("Save")
+
+    return _save

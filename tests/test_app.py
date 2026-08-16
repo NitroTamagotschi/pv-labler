@@ -1,4 +1,5 @@
 """Smoke tests for the Flask routes (app.py) with a small custom config."""
+
 import numpy as np
 import pytest
 import tifffile
@@ -57,6 +58,7 @@ def test_login_and_main_window(client):
 
 
 def test_save_api_and_good_exclusivity(client):
+    """Saving Good clears a previously stored defect (cascade from stored state)."""
     client.post("/login", data={"name": "Max"})
     res = client.post(
         "/api/save",
@@ -100,15 +102,14 @@ def test_cell_type_filter(client):
 
 def test_cell_type_multi_filter(client):
     client.post("/login", data={"name": "Max"})
-    page = client.get(
-        "/main?modality=VI&tab=unclassified&cell_type=23-P09-B1&cell_type=23-P09-B3"
-    )
+    page = client.get("/main?modality=VI&tab=unclassified&cell_type=23-P09-B1&cell_type=23-P09-B3")
     assert b"23-P09-B1_VI_Cell001" in page.data
     assert b"23-P09-B3_VI_Cell003" in page.data
     assert b"23-P09-B2_VI_Cell002" not in page.data
 
 
 def test_save_api_rejects_unknown_input(client):
+    """Unknown files, unknown keys, conflicts and empty batches are rejected."""
     client.post("/login", data={"name": "Max"})
     assert (
         client.post(
@@ -136,6 +137,7 @@ def test_save_api_rejects_unknown_input(client):
 
 
 def test_all_tab_shows_labeled_and_unlabeled(client):
+    """The All tab lists every image, while Unclassified only lists unlabeled ones."""
     client.post("/login", data={"name": "Max"})
     client.post(
         "/api/save",
