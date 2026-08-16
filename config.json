@@ -1,20 +1,59 @@
 {
-  "modal_max_width": 1300,
+  "modal_max_width": 1200,
   "modal_max_height": 1000,
   "modalities": [
-    { "code": "VI", "display_name": "VI", "filename_code": "VI" },
-    { "code": "EL", "display_name": "EL", "filename_code": "EL" },
-    { "code": "UVF", "display_name": "UVF", "filename_code": "UV" }
+    {
+      "code": "VI",
+      "display_name": "VI",
+      "filename_code": "VI",
+      "preview_min": 0.0,
+      "preview_max": 154.0
+    },
+    {
+      "code": "EL",
+      "display_name": "EL",
+      "filename_code": "EL",
+      "preview_min": 0.0,
+      "preview_max": 125.0
+    },
+    {
+      "code": "UVF",
+      "display_name": "UVF",
+      "filename_code": "UV",
+      "preview_min": 0.0,
+      "preview_max": 43.605
+    }
   ],
   "labels": {
-    "good": { "key": "good", "display_name": "Good" },
+    "good": {
+      "key": "good",
+      "display_name": "Good"
+    },
     "defects": [
-      { "key": "crack", "display_name": "Crack" },
-      { "key": "cross", "display_name": "Cross" },
-      { "key": "dark", "display_name": "Dark" },
-      { "key": "corrosion", "display_name": "Corrosion" },
-      { "key": "discoloration", "display_name": "Discoloration" },
-      { "key": "delamination", "display_name": "Delamination" }
+      {
+        "key": "crack",
+        "display_name": "Crack"
+      },
+      {
+        "key": "cross",
+        "display_name": "Cross"
+      },
+      {
+        "key": "dark",
+        "display_name": "Dark"
+      },
+      {
+        "key": "corrosion",
+        "display_name": "Corrosion"
+      },
+      {
+        "key": "discoloration",
+        "display_name": "Discoloration"
+      },
+      {
+        "key": "delamination",
+        "display_name": "Delamination"
+      }
     ]
   }
 }

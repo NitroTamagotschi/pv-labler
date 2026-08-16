@@ -30,6 +30,7 @@ IMAGES_DIR = os.path.normpath(os.path.join(HERE, "..", "data", "images"))
 
 SIZE = 384
 MODALITIES = ["VI", "EL", "UV"]  # filename codes from config.json (UVF -> UV)
+RGB_FILENAME = "23-P09-B1_UV_Cell004.tif"
 
 # Defect visibility per modality (filename codes; UV = the UVF modality).
 # From the user's table:
@@ -72,11 +73,10 @@ def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 
 def draw_defects(img: np.ndarray, defect_names: list[str]) -> np.ndarray:
-    """Draw the visible defect names as text into the uint16 image."""
+    """Draw the visible defect names as text into the uint8 image."""
     if not defect_names:
         return img
-    arr8 = (img / 256).astype(np.uint8)
-    canvas = Image.fromarray(arr8)
+    canvas = Image.fromarray(img)
     draw = ImageDraw.Draw(canvas)
     font = load_font(28)
     margin, gap = 10, 14
@@ -87,11 +87,11 @@ def draw_defects(img: np.ndarray, defect_names: list[str]) -> np.ndarray:
         draw.rectangle([margin - 4, y - 4, margin + w + 4, y + h + 4], fill=30)
         draw.text((margin, y), name, fill=255, font=font)
         y += h + gap
-    return np.asarray(canvas).astype(np.uint16) * 257
+    return np.asarray(canvas)
 
 
 def make_cell(modality: str, seed: int, defect_names: list[str]) -> np.ndarray:
-    """Render one synthetic cell image for a modality with the given defects."""
+    """Render one synthetic 8-bit cell image for a modality with the given defects."""
     rng = np.random.default_rng(seed)
     yy, xx = np.mgrid[0:SIZE, 0:SIZE]
     radius = np.hypot(xx - SIZE / 2, yy - SIZE / 2)
@@ -104,7 +104,7 @@ def make_cell(modality: str, seed: int, defect_names: list[str]) -> np.ndarray:
         img = 0.02 + 0.60 * base * texture
     else:  # VI
         img = 0.05 + 0.90 * base * texture
-    img = (np.clip(img, 0.0, 1.0) * 65535).astype(np.uint16)
+    img = (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8)
     return draw_defects(img, defect_names)
 
 
@@ -151,6 +151,9 @@ def image_plan() -> Iterator[tuple[str, str, list[str]]]:
     # one image in a subfolder to exercise the recursive scanner end to end
     # (its group also has missing modalities on purpose)
     yield "nested/23-P09-B1_EL_Cell004.tif", "EL", ["dark"]
+    # one 8-bit RGB capture (like a color UVF camera image) to exercise the
+    # multi-channel handling of the original view
+    yield RGB_FILENAME, "UV", ["discoloration"]
 
 
 def build_sample_images(images_dir: str) -> list[tuple[str, list[str]]]:
@@ -164,12 +167,15 @@ def build_sample_images(images_dir: str) -> list[tuple[str, list[str]]]:
     for filename, modality, visible in image_plan():
         seed += 1
         image = make_cell(modality, seed, display_names(visible))
+        if filename == RGB_FILENAME:
+            # 8-bit RGB version of the same cell (like a color camera capture)
+            image = np.stack([image, image, image], axis=-1)
         target = os.path.join(images_dir, filename)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         if filename.lower().endswith((".tif", ".tiff")):
             tifffile.imwrite(target, image)
         else:
-            Image.fromarray((image / 256).astype(np.uint8)).save(target, quality=90)
+            Image.fromarray(image).save(target, quality=90)
         written.append((filename, visible))
     return written
 

@@ -2,6 +2,11 @@
   box-sizing: border-box;
 }
 
+/* the [hidden] attribute must win over author display rules */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -127,7 +132,8 @@ body {
   border-color: #9aa1ac;
 }
 
-.type-filter-panel {
+.type-filter-panel,
+.window-filter-panel {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -145,8 +151,50 @@ body {
   gap: 2px;
 }
 
-.type-filter-panel[hidden] {
+.type-filter-panel[hidden],
+.window-filter-panel[hidden] {
   display: none;
+}
+
+.window-filter {
+  position: relative;
+}
+
+.window-filter-panel {
+  min-width: 480px;
+}
+
+.window-number {
+  width: 90px;
+  padding: 2px 6px;
+  border: 1px solid #c4c9d1;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.window-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  padding: 4px 0;
+}
+
+.window-option input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.window-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.window-bits {
+  font-size: 0.8rem;
+  color: #6b7280;
+  align-self: flex-end;
 }
 
 .type-filter-actions {
@@ -450,25 +498,65 @@ body {
   background: #000;
 }
 
-.modal-image img {
-  width: 100%;
-  display: block;
+.modal-image-stage {
   cursor: zoom-in;
 }
 
-.modal-image.zoomed img {
+.modal-image-stage img,
+.modal-image-stage canvas {
+  width: 100%;
+  display: block;
+}
+
+.modal-image.zoomed .modal-image-stage {
   cursor: grab;
 }
 
-.modal-image.dragging img {
+.modal-image.dragging .modal-image-stage {
   cursor: grabbing;
 }
 
-.modal-image figcaption {
+.modal-image-controls {
   margin-top: 6px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.modal-window-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.modal-window-controls input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.modal-window-label {
+  font-size: 0.8rem;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.modal-image figcaption {
+  margin: 0 0 6px;
   font-size: 0.85rem;
   font-weight: 600;
   color: #374151;
+}
+
+.modal-window-value {
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.modal-window-bits {
+  font-size: 0.8rem;
+  color: #6b7280;
+  white-space: nowrap;
 }
 
 .modal-missing {

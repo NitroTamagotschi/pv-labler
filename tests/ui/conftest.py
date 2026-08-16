@@ -45,6 +45,7 @@ def live_server(tmp_path, sample_script):
         labels_csv=str(data_dir / "labels.csv"),
         change_log=str(data_dir / "change_log.txt"),
         previews_dir=str(previews_dir),
+        config_path=str(data_dir / "config.json"),
     )
     server = make_server("127.0.0.1", 0, app, threaded=True)
     port = server.server_port
@@ -60,6 +61,7 @@ def live_server(tmp_path, sample_script):
         "base_url": base_url,
         "labels_csv": data_dir / "labels.csv",
         "change_log": data_dir / "change_log.txt",
+        "config_path": data_dir / "config.json",
     }
     server.shutdown()
     thread.join(timeout=5)

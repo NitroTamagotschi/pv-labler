@@ -22,6 +22,24 @@ class PreviewError(Exception):
     """Raised when a preview cannot be generated."""
 
 
+def probe_data_range(source: str) -> float:
+    """Return the raw value range (max) of one image for slider sizing.
+
+    TIFFs are probed header-only (float -> 1.0, wider than 8-bit -> 65535,
+    otherwise 255); other formats are always 8-bit. Errors fall back to 255.
+    """
+    if source.lower().endswith((".tif", ".tiff")):
+        try:
+            with tifffile.TiffFile(source) as tif:
+                dtype = tif.pages[0].dtype
+            if dtype.kind == "f":
+                return 1.0
+            return 65535.0 if dtype.itemsize > 1 else 255.0
+        except Exception:
+            return 255.0
+    return 255.0
+
+
 class PreviewGenerator:
     """Generate and cache JPEG previews of the images in images_dir."""
 
@@ -49,31 +67,37 @@ class PreviewGenerator:
             raise ValueError("Invalid image filename")
         return source
 
-    def get_preview_path(self, filename: str) -> str:
-        """Return the path of the cached preview, generating it on first use."""
+    def get_preview_path(self, filename: str, window: tuple[float, float] | None = None) -> str:
+        """Return the path of the cached preview, generating it on first use.
+
+        window optionally maps the raw data range (lo, hi) linearly onto the
+        8-bit display; without it, wider integer data keeps its high byte.
+        """
         source = self.resolve_source(filename)
         if not os.path.isfile(source):
             raise FileNotFoundError(source)
-        cache_path = os.path.join(self.previews_dir, self._cache_name(filename, source))
+        cache_path = os.path.join(self.previews_dir, self._cache_name(filename, source, window))
         if not os.path.isfile(cache_path):
             with self._lock:
                 if not os.path.isfile(cache_path):
-                    self._generate(source, cache_path)
+                    self._generate(source, cache_path, window)
         return cache_path
 
-    def _cache_name(self, filename: str, source: str) -> str:
-        """Return the cache filename keyed by filename, source mtime and target size."""
+    def _cache_name(self, filename: str, source: str, window: tuple[float, float] | None) -> str:
+        """Return the cache filename keyed by filename, mtime, size and window."""
         mtime = os.stat(source).st_mtime_ns
-        digest = hashlib.sha256(f"{filename}|{mtime}|{PREVIEW_MAX_SIZE}".encode()).hexdigest()[:16]
+        digest = hashlib.sha256(
+            f"{filename}|{mtime}|{PREVIEW_MAX_SIZE}|{window}".encode()
+        ).hexdigest()[:16]
         stem = "".join(
             c if c.isalnum() or c in "-_" else "_" for c in os.path.splitext(filename)[0]
         )
         return f"{stem}_{digest}.jpg"
 
-    def _generate(self, source: str, cache_path: str) -> None:
+    def _generate(self, source: str, cache_path: str, window: tuple[float, float] | None) -> None:
         """Write the cached JPEG preview for one source image (atomic replace)."""
         data = self._read_source(source)
-        image = Image.fromarray(self._to_uint8(data))
+        image = Image.fromarray(self._to_uint8(data, window))
         image.thumbnail((PREVIEW_MAX_SIZE, PREVIEW_MAX_SIZE), Image.Resampling.LANCZOS)
         os.makedirs(self.previews_dir, exist_ok=True)
         tmp_path = cache_path + ".tmp"
@@ -105,13 +129,15 @@ class PreviewGenerator:
         except Exception as exc:
             raise PreviewError(f"Cannot read {os.path.basename(source)}: {exc}") from exc
 
-    def _to_uint8(self, data: np.ndarray) -> np.ndarray:
+    def _to_uint8(self, data: np.ndarray, window: tuple[float, float] | None = None) -> np.ndarray:
         """Convert image data to uint8 without any normalization.
 
-        Only the conversion needed for display is applied: 8-bit data passes
-        through unchanged, wider integer data keeps its high byte (a dark
-        16-bit recording stays dark), float data (expected in the 0.0-1.0
-        range) is scaled by 255, and boolean masks become 0/255.
+        Only the conversion needed for display is applied: integer data
+        either keeps its raw mapping (8-bit passes through unchanged, wider
+        data keeps its high byte) or, when window (lo, hi) is given, is
+        mapped linearly onto 0-255 with clipping outside the window. Float
+        data (expected in the 0.0-1.0 range) is scaled by 255, and boolean
+        masks become 0/255.
         """
         arr = np.asarray(data)
         if arr.size == 0:
@@ -123,6 +149,18 @@ class PreviewGenerator:
             raise PreviewError(f"Unsupported image shape {arr.shape}")
         if arr.dtype == np.bool_:
             return arr.astype(np.uint8) * 255
+        if window is not None and arr.dtype.kind in "ui":
+            lo, hi = window
+            # clamp to the image's own raw range, so a window configured in
+            # 16-bit units cannot crush 8-bit images (and vice versa)
+            native_max = (1 << (arr.dtype.itemsize * 8)) - 1
+            hi = min(float(hi), float(native_max))
+            lo = min(float(lo), hi)
+            if hi > lo:
+                scaled = (arr.astype(np.float64) - lo) / (hi - lo)
+                return np.clip(scaled * 255.0, 0.0, 255.0).astype(np.uint8)
+            # the window collapses against the native range: fall through
+            # to the raw mapping below
         if arr.dtype == np.uint8:
             return np.ascontiguousarray(arr)
         if arr.dtype.kind == "f":

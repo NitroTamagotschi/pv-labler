@@ -5,9 +5,11 @@ modality dropdown and label-filter tabs, checkbox labeling with the Good
 exclusivity rules, group view pop-up and CSV/change-log persistence.
 """
 
+import hashlib
 import json
 import os
 import re
+import tempfile
 
 from flask import (
     Flask,
@@ -68,6 +70,23 @@ def _validate_config(config: dict) -> None:
         filename_code = (modality.get("filename_code") or code).strip()
         if not MODALITY_CODE_PATTERN.fullmatch(filename_code):
             raise ValueError(f"config.json: invalid filename_code {filename_code!r}")
+        preview_min = modality.get("preview_min")
+        preview_max = modality.get("preview_max")
+        if (preview_min is None) != (preview_max is None):
+            raise ValueError(
+                f"config.json: modality {code!r}: "
+                "'preview_min' and 'preview_max' must be set together"
+            )
+        if preview_min is not None and (
+            isinstance(preview_min, bool)
+            or isinstance(preview_max, bool)
+            or not isinstance(preview_min, (int, float))
+            or not isinstance(preview_max, (int, float))
+            or preview_max <= preview_min
+        ):
+            raise ValueError(
+                f"config.json: modality {code!r}: 'preview_min' must be < 'preview_max'"
+            )
         codes.append(code)
         filename_codes.append(filename_code.lower())
     if len(set(codes)) != len(codes):
@@ -113,11 +132,20 @@ def create_app(
     labels_csv: str | None = None,
     change_log: str | None = None,
     previews_dir: str | None = None,
+    config_path: str | None = None,
 ) -> Flask:
-    """Create the Flask app wired to the given config and storage locations."""
+    """Create the Flask app wired to the given config and storage locations.
+
+    config_path is the file the preview-window endpoint writes back to; it
+    defaults to config.json when the app loads its own config from disk and
+    is None (no write-back) when a config dict is passed without a path.
+    """
     app = Flask(__name__)
     app.secret_key = os.environ.get("PV_LABLER_SECRET_KEY", "dev-secret-key-change-me")
-    config = config if config is not None else load_config()
+    if config is None:
+        config = load_config()
+        config_path = config_path if config_path is not None else CONFIG_PATH
+    app.config["PV_CONFIG_PATH"] = config_path
     images_dir = images_dir or IMAGES_DIR
     os.makedirs(images_dir, exist_ok=True)
 
@@ -130,6 +158,11 @@ def create_app(
         images_dir, images.modality_filename_codes(config["modalities"]), log=app.logger.warning
     )
     app.config["PV_PREVIEWS"] = previews.PreviewGenerator(images_dir, previews_dir or PREVIEWS_DIR)
+    app.config["PV_PREVIEW_WINDOWS"] = {
+        m["code"]: (m["preview_min"], m["preview_max"])
+        for m in config["modalities"]
+        if "preview_min" in m
+    }
 
     @app.route("/")
     def index() -> Response | str:
@@ -185,6 +218,22 @@ def create_app(
         counts = {t: 0 for t in valid_tabs}
         cards = []
         modality_displays = {m["code"]: m["display_name"] for m in cfg["modalities"]}
+        # preview-window info: slider range (probed from the first image of the
+        # selected modality) and a per-window cache-busting signature for URLs
+        preview_range = 255.0
+        if modality != "all":
+            for info in all_images.values():
+                if info.modality == modality:
+                    preview_range = previews.probe_data_range(
+                        os.path.join(app.config["PV_IMAGES_DIR"], info.filename)
+                    )
+                    break
+        window_sig = {
+            m["code"]: hashlib.md5(
+                repr(app.config["PV_PREVIEW_WINDOWS"].get(m["code"])).encode()
+            ).hexdigest()[:8]
+            for m in cfg["modalities"]
+        }
         for filename, info in all_images.items():
             if modality != "all" and info.modality != modality:
                 continue
@@ -208,7 +257,7 @@ def create_app(
                     "modality_display": modality_displays.get(info.modality, info.modality),
                     "good": state.get(good_key, 0),
                     "defects": {k: state.get(k, 0) for k in defect_keys},
-                    "preview_url": url_for("preview", file=filename),
+                    "preview_url": url_for("preview", file=filename, v=window_sig[info.modality]),
                 }
             )
 
@@ -235,6 +284,19 @@ def create_app(
         modal_height = cfg.get("modal_max_height", "90vh")
         modal_max_height = f"{modal_height}px" if isinstance(modal_height, int) else modal_height
 
+        preview_window = app.config["PV_PREVIEW_WINDOWS"].get(modality)
+        preview_window_min = preview_window[0] if preview_window else 0
+        preview_window_max = preview_window[1] if preview_window else preview_range
+        preview_window_label = (
+            f"{preview_window_min:g} – {preview_window_max:g}" if preview_window else "Standard"
+        )
+        if preview_range >= 65535:
+            preview_bits = "16-Bit"
+        elif preview_range > 1:
+            preview_bits = "8-Bit"
+        else:
+            preview_bits = "Float"
+
         return render_template(
             "main.html",
             user=session["name"],
@@ -252,6 +314,11 @@ def create_app(
             defect_keys=defect_keys,
             modal_max_width=cfg.get("modal_max_width", 1100),
             modal_max_height=modal_max_height,
+            preview_window_label=preview_window_label,
+            preview_window_min=preview_window_min,
+            preview_window_max=preview_window_max,
+            preview_range=preview_range,
+            preview_bits=preview_bits,
         )
 
     @app.route("/api/save", methods=["POST"])
@@ -326,12 +393,82 @@ def create_app(
             abort(401)
         filename = request.args.get("file", "")
         generator = app.config["PV_PREVIEWS"]
+        info = app.config["PV_INDEX"].get()[0].get(filename)
+        window = app.config["PV_PREVIEW_WINDOWS"].get(info.modality) if info is not None else None
         try:
-            cache_path = generator.get_preview_path(filename)
+            cache_path = generator.get_preview_path(filename, window=window)
         except (ValueError, OSError, previews.PreviewError) as exc:
             app.logger.warning("Preview request failed for %r: %s", filename, exc)
             abort(404)
         return send_file(cache_path, mimetype="image/jpeg")
+
+    @app.route("/api/original/<path:filename>")
+    def api_original(filename: str) -> Response:
+        """Serve the original image file for the in-app original view."""
+        if "name" not in session:
+            return jsonify(ok=False, error="Not logged in"), 401
+        try:
+            source = app.config["PV_PREVIEWS"].resolve_source(filename)
+        except ValueError:
+            abort(404)
+        if not os.path.isfile(source):
+            abort(404)
+        return send_file(source, mimetype="image/tiff")
+
+    @app.route("/api/preview-window", methods=["POST"])
+    def api_preview_window() -> Response:
+        """Update or reset the preview window of one modality in config.json."""
+        if "name" not in session:
+            return jsonify(ok=False, error="Not logged in"), 401
+        config_path = app.config.get("PV_CONFIG_PATH")
+        if not config_path:
+            return jsonify(ok=False, error="Config is not file-backed"), 400
+        data = request.get_json(silent=True) or {}
+        code = str(data.get("code") or "")
+        current = app.config["PV_CONFIG"]
+        if code not in [m["code"] for m in current["modalities"]]:
+            return jsonify(ok=False, error="Unknown modality"), 400
+        new_config = json.loads(json.dumps(current))
+        entry = next(m for m in new_config["modalities"] if m["code"] == code)
+        if data.get("reset"):
+            entry.pop("preview_min", None)
+            entry.pop("preview_max", None)
+        else:
+            try:
+                lo = float(data["min"])
+                hi = float(data["max"])
+            except (KeyError, TypeError, ValueError):
+                return jsonify(ok=False, error="min and max are required"), 400
+            if hi <= lo:
+                return jsonify(ok=False, error="min must be < max"), 400
+            entry["preview_min"] = lo
+            entry["preview_max"] = hi
+        try:
+            _validate_config(new_config)
+        except ValueError as exc:
+            return jsonify(ok=False, error=str(exc)), 400
+        # atomic write back, then swap the running config
+        directory = os.path.dirname(os.path.abspath(config_path))
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(new_config, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            os.replace(tmp_path, config_path)
+        except BaseException:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
+        app.config["PV_CONFIG"] = new_config
+        app.config["PV_PREVIEW_WINDOWS"] = {
+            m["code"]: (m["preview_min"], m["preview_max"])
+            for m in new_config["modalities"]
+            if "preview_min" in m
+        }
+        return jsonify(ok=True)
 
     return app
 

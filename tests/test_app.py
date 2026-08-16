@@ -1,5 +1,8 @@
 """Smoke tests for the Flask routes (app.py) with a small custom config."""
 
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 import tifffile
@@ -11,7 +14,7 @@ CONFIG = {
     "modal_max_height": 800,
     "modalities": [
         {"code": "VI", "display_name": "VI"},
-        {"code": "EL", "display_name": "EL"},
+        {"code": "EL", "display_name": "EL", "preview_min": 4000, "preview_max": 30000},
     ],
     "labels": {
         "good": {"key": "good", "display_name": "Good"},
@@ -37,6 +40,7 @@ def client(tmp_path):
         labels_csv=str(tmp_path / "labels.csv"),
         change_log=str(tmp_path / "change_log.txt"),
         previews_dir=str(tmp_path / "previews"),
+        config_path=str(tmp_path / "config.json"),
     )
     app.config["TESTING"] = True
     return app.test_client()
@@ -59,6 +63,8 @@ def test_login_and_main_window(client):
     assert b"Crack" in page.data
     assert b"--modal-max-width: 1400px" in page.data  # from config.json
     assert b"--modal-max-height: 800px" in page.data
+    assert b"window-filter-panel" in page.data
+    assert b"&amp;v=" in page.data  # preview URLs carry a window cache-busting signature
 
 
 def test_modal_size_validation_and_default(tmp_path):
@@ -190,3 +196,72 @@ def test_preview_route(client):
     res = client.get("/preview?file=23-P09-B1_VI_Cell001.tif")
     assert res.status_code == 200
     assert res.mimetype == "image/jpeg"
+    # EL has a configured preview window; the request must still work
+    assert client.get("/preview?file=23-P09-B1_EL_Cell001.tif").status_code == 200
+
+
+def test_preview_window_validation():
+    """Preview windows must be complete pairs with min < max."""
+    modality = CONFIG["modalities"][0]
+    others = CONFIG["modalities"][1:]
+    with pytest.raises(ValueError):
+        _validate_config({**CONFIG, "modalities": [{**modality, "preview_min": 1000}, *others]})
+    with pytest.raises(ValueError):
+        _validate_config(
+            {
+                **CONFIG,
+                "modalities": [
+                    {**modality, "preview_min": 5000, "preview_max": 5000},
+                    *others,
+                ],
+            }
+        )
+
+
+def test_preview_window_endpoint(client):
+    """The panel endpoint persists the window to config.json and swaps it in."""
+    config_path = Path(client.application.config["PV_CONFIG_PATH"])
+    client.post("/login", data={"name": "Max"})
+    res = client.post("/api/preview-window", json={"code": "EL", "min": 1000, "max": 20000})
+    assert res.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    el = next(m for m in saved["modalities"] if m["code"] == "EL")
+    assert (el["preview_min"], el["preview_max"]) == (1000.0, 20000.0)
+    assert client.application.config["PV_PREVIEW_WINDOWS"]["EL"] == (1000.0, 20000.0)
+    # reset removes the entry again
+    res = client.post("/api/preview-window", json={"code": "EL", "reset": True})
+    assert res.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    el = next(m for m in saved["modalities"] if m["code"] == "EL")
+    assert "preview_min" not in el and "preview_max" not in el
+    assert "EL" not in client.application.config["PV_PREVIEW_WINDOWS"]
+
+
+def test_preview_window_rejects_invalid_input(client):
+    """The endpoint requires a login and a valid modality/min-max pair."""
+    assert client.post("/api/preview-window", json={}).status_code == 401
+    client.post("/login", data={"name": "Max"})
+    assert (
+        client.post("/api/preview-window", json={"code": "nope", "min": 0, "max": 10}).status_code
+        == 400
+    )
+    assert (
+        client.post("/api/preview-window", json={"code": "EL", "min": 10, "max": 10}).status_code
+        == 400
+    )
+    assert client.post("/api/preview-window", json={"code": "EL"}).status_code == 400
+
+
+def test_original_route(client):
+    """The original TIFF is served byte-identical; unknown paths get a 404."""
+    images_dir = Path(client.application.config["PV_IMAGES_DIR"])
+    source = images_dir / "23-P09-B1_EL_Cell001.tif"
+    assert source.exists()
+    assert client.get("/api/original/23-P09-B1_EL_Cell001.tif").status_code == 401
+    client.post("/login", data={"name": "Max"})
+    res = client.get("/api/original/23-P09-B1_EL_Cell001.tif")
+    assert res.status_code == 200
+    assert res.mimetype == "image/tiff"
+    assert res.data == source.read_bytes()
+    assert client.get("/api/original/nope.tif").status_code == 404
+    assert client.get("/api/original/..evil.tif").status_code == 404

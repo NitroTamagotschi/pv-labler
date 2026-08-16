@@ -41,6 +41,35 @@
         <input type="hidden" name="tab" value="{{ tab }}">
       </form>
     </div>
+    <div class="window-filter">
+      <button type="button" class="type-filter-trigger" id="window-filter-trigger">
+        Preview-Window: {{ preview_window_label }} <span aria-hidden="true">▾</span>
+      </button>
+      <div class="window-filter-panel" id="window-filter-panel" hidden>
+        {% if modality == 'all' %}
+        <p class="window-hint">Für das Vorschau-Fenster eine einzelne Modalität wählen.</p>
+        {% else %}
+        <label class="window-option">
+          Min
+          <input type="range" id="window-min" min="0" max="{{ preview_range }}"
+                 value="{{ preview_window_min }}">
+          <input type="number" id="window-min-input" class="window-number"
+                 min="0" max="{{ preview_range }}" step="any"
+                 value="{{ preview_window_min }}">
+        </label>
+        <label class="window-option">
+          Max
+          <input type="range" id="window-max" min="0" max="{{ preview_range }}"
+                 value="{{ preview_window_max }}">
+          <input type="number" id="window-max-input" class="window-number"
+                 min="0" max="{{ preview_range }}" step="any"
+                 value="{{ preview_window_max }}">
+        </label>
+        <span class="window-bits" id="window-bits">{{ preview_bits }}</span>
+        <button type="button" class="apply-btn" id="window-reset">Reset</button>
+        {% endif %}
+      </div>
+    </div>
     <button type="button" id="save-btn" class="save-btn" disabled>Save</button>
     <div class="user-box">
       <span>{{ user }}</span>
@@ -95,12 +124,16 @@
 
   <script>
     window.APP = {
+      modality: {{ modality|tojson }},
       goodKey: {{ good_key|tojson }},
       defectKeys: {{ defect_keys|tojson }},
       saveUrl: {{ url_for('api_save')|tojson }},
-      groupUrl: {{ url_for('api_group', filename='__FN__')|tojson }}
+      groupUrl: {{ url_for('api_group', filename='__FN__')|tojson }},
+      originalUrl: {{ url_for('api_original', filename='__FN__')|tojson }},
+      previewWindowUrl: {{ url_for('api_preview_window')|tojson }}
     };
   </script>
+  <script src="{{ url_for('static', filename='js/vendor/UTIF.js') }}"></script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

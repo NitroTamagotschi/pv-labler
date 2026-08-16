@@ -1,5 +1,7 @@
 """Browser smoke tests for the main labeling workflow (Playwright)."""
 
+from pathlib import Path
+
 import pytest
 from playwright.sync_api import expect
 
@@ -89,10 +91,10 @@ def test_modal_zoom_wheel_and_double_click_reset(login, live_server):
     page.goto(base + "/main?modality=EL&tab=unclassified")
     card = page.locator('[data-filename="23-P09-B2_EL_Cell002.tif"]')
     card.locator(".card-image").click()
-    imgs = page.locator("#modal-body img")
-    expect(imgs).to_have_count(2)  # VI + EL (UVF missing on purpose)
-    first = imgs.first
-    second = imgs.nth(1)
+    stages = page.locator("#modal-body .modal-image-stage")
+    expect(stages).to_have_count(2)  # VI + EL (UVF missing on purpose)
+    first = stages.first
+    second = stages.nth(1)
     expect(first).to_be_visible()
     expect(first).to_have_css("transform", "none")
     first.hover()
@@ -106,6 +108,92 @@ def test_modal_zoom_wheel_and_double_click_reset(login, live_server):
     first.dblclick()  # reset
     expect(first).to_have_css("transform", "none")
     expect(second).to_have_css("transform", "none")
+
+
+def test_modal_original_view_with_window_controls(login, live_server):
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=EL&tab=unclassified")
+    card = page.locator('[data-filename="23-P09-B2_EL_Cell002.tif"]')
+    card.locator(".card-image").click()
+    figure = page.locator("#modal-body figure").first
+    # the original TIFF is the default view and loads on its own
+    canvas = figure.locator("canvas")
+    expect(canvas).to_be_visible()
+    expect(figure.locator(".modal-image-stage img")).to_be_hidden()
+    expect(figure.locator(".modal-image-controls button")).to_have_text("Vorschau")
+    expect(figure.locator(".modal-window-controls")).to_be_visible()
+    expect(figure.locator(".modal-window-controls")).to_contain_text("Min")
+    expect(figure.locator(".modal-window-controls")).to_contain_text("Max")
+    # the sliders show their current values, the caption sits above the image
+    expect(figure.locator(".modal-window-value")).to_have_count(2)
+    expect(figure.locator(".modal-window-bits")).to_have_text("8-Bit")
+    assert figure.evaluate("el => el.firstElementChild.tagName") == "FIGCAPTION"
+    expect(figure.locator(".modal-image-controls a")).to_have_attribute(
+        "download", "23-P09-B2_VI_Cell002.tif"
+    )
+    # the min/max window maps the brightest deterministic sample pixel to 255
+    max_pixel = canvas.evaluate(
+        """el => {
+            const data = el.getContext("2d").getImageData(0, 0, el.width, el.height).data;
+            let max = 0;
+            for (let i = 0; i < data.length; i += 4) max = Math.max(max, data[i]);
+            return max;
+        }"""
+    )
+    assert max_pixel == 255
+    # switch back to the preview on demand
+    figure.locator(".modal-image-controls button").click()
+    expect(canvas).to_have_count(0)
+    expect(figure.locator(".modal-image-stage img")).to_be_visible()
+
+
+def test_preview_window_panel_updates_config(login, live_server):
+    """The main-menu sliders persist the window to config.json and reload."""
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=UVF&tab=unclassified")
+    page.locator("#window-filter-trigger").click()
+    panel = page.locator("#window-filter-panel")
+    expect(panel).to_be_visible()
+    expect(panel.locator("#window-bits")).to_have_text("8-Bit")
+    # reset first so the test is independent of the current config values
+    panel.locator("#window-reset").click()
+    expect(panel).to_be_hidden()  # fresh page after the reload
+    page.locator("#window-filter-trigger").click()
+    expect(panel).to_be_visible()
+    # exact values can be typed into the number input
+    max_input = panel.locator("#window-max-input")
+    max_input.fill("26")
+    max_input.press("Enter")  # triggers change -> save + reload
+    # the new window shows up in the trigger
+    expect(page.locator("#window-filter-trigger")).to_contain_text("26")
+    config_text = Path(live_server["config_path"]).read_text(encoding="utf-8")
+    assert '"preview_max": 26.0' in config_text
+
+
+def test_modal_original_view_rgb(login, live_server):
+    """The original view also renders multi-channel (RGB) TIFFs."""
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=UVF&tab=unclassified")
+    card = page.locator('[data-filename="23-P09-B1_UV_Cell004.tif"]')
+    card.locator(".card-image").click()
+    # the group also contains the nested EL Cell004 — scope by the image
+    figure = page.locator(
+        "#modal-body figure", has=page.locator('img[alt="23-P09-B1_UV_Cell004.tif"]')
+    )
+    canvas = figure.locator("canvas")
+    expect(canvas).to_be_visible()
+    max_pixel = canvas.evaluate(
+        """el => {
+            const data = el.getContext("2d").getImageData(0, 0, el.width, el.height).data;
+            let max = 0;
+            for (let i = 0; i < data.length; i += 4) max = Math.max(max, data[i]);
+            return max;
+        }"""
+    )
+    assert max_pixel == 255
 
 
 def test_cell_type_panel_multiselect(login, live_server):

@@ -81,6 +81,8 @@ Die Benutzeroberfläche, die Filter-Tabs, die Checkboxen und die CSV-Labelspalte
 
 Optional können `modal_max_width` und `modal_max_height` gesetzt werden: maximale Breite bzw. Höhe des Bildgruppen-Pop-ups in Pixeln (Breiten-Standard: 1100, Höhen-Standard: 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe.
 
+Optional können pro Modalität `preview_min` und `preview_max` gesetzt werden (gemeinsam, `min < max`): ein lineares Anzeigefenster in Rohwerten für die JPEG-Vorschau von Ganzzahl-Daten, außerhalb des Fensters wird geklemmt. Das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt. Ohne Angabe werden 8-Bit-Werte unverändert übernommen und bei 16-Bit das High-Byte verwendet. Die Werte können zur Laufzeit über das Preview-Window-Panel der Oberfläche geändert werden; die Anwendung schreibt Änderungen in die `config.json` zurück.
+
 ## 4. Bilddateien und Zuordnung
 
 ### 4.1 Dateinamensformat
@@ -333,6 +335,10 @@ Das Änderungslog wird ausschließlich ergänzt; bestehende Einträge dürfen ni
 Die Quelldateien liegen als `.tif` vor. Da TIFF-Dateien nicht in allen Browsern direkt dargestellt werden können, muss die Anwendung für die Webanzeige Vorschaubilder in einem browserkompatiblen Format erzeugen oder bereitstellen, z. B. PNG oder JPEG.
 
 Die Originaldateien dürfen durch die Vorschau-Erzeugung nicht verändert werden.
+
+Ergänzend wird die Originaldatei in der Bildgruppenansicht standardmäßig direkt im Browser angezeigt (Dekodierung per JavaScript, Anzeige mit Min/Max-Window-Reglern über den Datenbereich; Umschalten auf die JPEG-Vorschau ist möglich) und kann als Datei heruntergeladen werden.
+
+Die Window-Regler legen Schwarz- und Weißpunkt der Anzeige fest: Werte unterhalb von `Min` werden schwarz, oberhalb von `Max` weiß dargestellt, Werte dazwischen linear gespreizt. Startzustand ist der volle Datenbereich des Bildes. Die Regler zeigen ihren aktuellen Wert und die Bittiefe des angezeigten Bildes an. Die Regler verändern ausschließlich die Anzeige, nicht die Bilddaten; gefundene Werte können über das Preview-Window-Panel des Hauptfensters in die `config.json` übernommen werden.
 
 ### 10.4 Konsistenz und Fehlerbehandlung
 

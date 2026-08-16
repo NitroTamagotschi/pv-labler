@@ -1,5 +1,7 @@
 """Tests for the TIFF-to-JPEG preview generation (previews.py)."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import tifffile
@@ -80,6 +82,40 @@ def test_float_is_only_scaled_by_255(generator):
     _, gen = generator
     assert gen._to_uint8(np.zeros((4, 4), dtype=np.float32)).max() == 0
     assert gen._to_uint8(np.ones((4, 4), dtype=np.float32)).min() == 255
+
+
+def test_uint16_window_mapping(generator):
+    """With a window, 16-bit data is mapped linearly onto 0-255 (clipped)."""
+    _, gen = generator
+    data = np.array([[1000, 4000], [26000, 0]], dtype=np.uint16)
+    out = gen._to_uint8(data, window=(4000.0, 26000.0))
+    assert out.tolist() == [[0, 0], [255, 0]]
+
+
+def test_uint8_window_mapping(generator):
+    """A window also stretches 8-bit data (e.g. dark UVF captures)."""
+    _, gen = generator
+    data = np.array([[0, 13], [26, 40]], dtype=np.uint8)
+    out = gen._to_uint8(data, window=(0.0, 26.0))
+    assert out.tolist() == [[0, 127], [255, 255]]
+
+
+def test_window_is_clamped_to_native_range(generator):
+    """A window in 16-bit units must not crush 8-bit images (falls back to raw)."""
+    _, gen = generator
+    data = np.array([[0, 128], [255, 200]], dtype=np.uint8)
+    out = gen._to_uint8(data, window=(0.0, 30000.0))
+    assert out.tolist() == [[0, 128], [255, 200]]
+
+
+def test_window_changes_cache_file(generator):
+    """The preview window is part of the cache key."""
+    images_dir, gen = generator
+    _write_tiff(images_dir, "23-P09-B1_EL_Cell001.tif", np.full((64, 64), 5000, dtype=np.uint16))
+    raw = gen.get_preview_path("23-P09-B1_EL_Cell001.tif")
+    windowed = gen.get_preview_path("23-P09-B1_EL_Cell001.tif", window=(4000.0, 26000.0))
+    assert raw != windowed
+    assert Path(windowed).exists()
 
 
 def test_preview_from_subfolder(generator):
