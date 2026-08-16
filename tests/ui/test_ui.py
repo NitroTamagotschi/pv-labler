@@ -83,6 +83,31 @@ def test_group_modal_shows_missing_modality(login, live_server):
     expect(modal).to_be_hidden()
 
 
+def test_modal_zoom_wheel_and_double_click_reset(login, live_server):
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=EL&tab=unclassified")
+    card = page.locator('[data-filename="23-P09-B2_EL_Cell002.tif"]')
+    card.locator(".card-image").click()
+    imgs = page.locator("#modal-body img")
+    expect(imgs).to_have_count(2)  # VI + EL (UVF missing on purpose)
+    first = imgs.first
+    second = imgs.nth(1)
+    expect(first).to_be_visible()
+    expect(first).to_have_css("transform", "none")
+    first.hover()
+    page.mouse.wheel(0, -600)  # zoom in around the cursor
+    expect(first).not_to_have_css("transform", "none")
+    # the other modality zooms in sync: same transform and same focal point
+    expect(second).not_to_have_css("transform", "none")
+    assert first.evaluate("e => e.style.transformOrigin") == second.evaluate(
+        "e => e.style.transformOrigin"
+    )
+    first.dblclick()  # reset
+    expect(first).to_have_css("transform", "none")
+    expect(second).to_have_css("transform", "none")
+
+
 def test_cell_type_panel_multiselect(login, live_server):
     page = login
     base = live_server["base_url"]

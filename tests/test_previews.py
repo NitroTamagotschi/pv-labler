@@ -29,7 +29,7 @@ def test_generate_uint16_preview(generator):
     assert path.endswith(".jpg")
     with Image.open(path) as img:
         assert img.format == "JPEG"
-        assert img.width <= 1024 and img.height <= 1024
+        assert img.width <= 2048 and img.height <= 2048
 
 
 def test_generate_float_preview(generator):

@@ -90,6 +90,13 @@ def _validate_config(config: dict) -> None:
     if len(set(keys)) != len(keys):
         raise ValueError("config.json: duplicate label keys")
 
+    for key in ("modal_max_width", "modal_max_height"):
+        value = config.get(key)
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 200
+        ):
+            raise ValueError(f"config.json: '{key}' must be an integer >= 200")
+
 
 def _matches_tab(state: dict, tab: str, is_unclassified: bool) -> bool:
     """Return whether a label state belongs to the given tab view."""
@@ -225,6 +232,9 @@ def create_app(
         else:
             cell_type_label = f"{len(selected_types)} selected"
 
+        modal_height = cfg.get("modal_max_height", "90vh")
+        modal_max_height = f"{modal_height}px" if isinstance(modal_height, int) else modal_height
+
         return render_template(
             "main.html",
             user=session["name"],
@@ -240,6 +250,8 @@ def create_app(
             good_label=cfg["labels"]["good"]["display_name"],
             defects=cfg["labels"]["defects"],
             defect_keys=defect_keys,
+            modal_max_width=cfg.get("modal_max_width", 1100),
+            modal_max_height=modal_max_height,
         )
 
     @app.route("/api/save", methods=["POST"])

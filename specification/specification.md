@@ -56,6 +56,8 @@ Dateiname: `config.json`
 
 ```json
 {
+  "modal_max_width": 1100,
+  "modal_max_height": 800,
   "modalities": [
     { "code": "VI", "display_name": "VI" },
     { "code": "EL", "display_name": "EL" },
@@ -76,6 +78,8 @@ Dateiname: `config.json`
 ```
 
 Die Benutzeroberfläche, die Filter-Tabs, die Checkboxen und die CSV-Labelspalten sollen aus dieser Konfiguration erzeugt werden, soweit dies technisch sinnvoll möglich ist.
+
+Optional können `modal_max_width` und `modal_max_height` gesetzt werden: maximale Breite bzw. Höhe des Bildgruppen-Pop-ups in Pixeln (Breiten-Standard: 1100, Höhen-Standard: 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe.
 
 ## 4. Bilddateien und Zuordnung
 

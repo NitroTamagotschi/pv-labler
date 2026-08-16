@@ -4,9 +4,11 @@ import numpy as np
 import pytest
 import tifffile
 
-from app import create_app
+from app import _validate_config, create_app
 
 CONFIG = {
+    "modal_max_width": 1400,
+    "modal_max_height": 800,
     "modalities": [
         {"code": "VI", "display_name": "VI"},
         {"code": "EL", "display_name": "EL"},
@@ -55,6 +57,29 @@ def test_login_and_main_window(client):
     assert b"Unclassified" in page.data
     assert b"Cell001" in page.data
     assert b"Crack" in page.data
+    assert b"--modal-max-width: 1400px" in page.data  # from config.json
+    assert b"--modal-max-height: 800px" in page.data
+
+
+def test_modal_size_validation_and_default(tmp_path):
+    """Modal size keys must be integers >= 200; absent they fall back to 1100px/90vh."""
+    for key in ("modal_max_width", "modal_max_height"):
+        with pytest.raises(ValueError):
+            _validate_config(dict(CONFIG, **{key: "wide"}))
+        with pytest.raises(ValueError):
+            _validate_config(dict(CONFIG, **{key: 100}))
+    app = create_app(
+        config={k: v for k, v in CONFIG.items() if "modal_max" not in k},
+        images_dir=str(tmp_path / "images"),
+        labels_csv=str(tmp_path / "labels.csv"),
+        change_log=str(tmp_path / "change_log.txt"),
+        previews_dir=str(tmp_path / "previews"),
+    )
+    with app.test_client() as client:
+        client.post("/login", data={"name": "Max"})
+        page = client.get("/main").data
+        assert b"--modal-max-width: 1100px" in page
+        assert b"--modal-max-height: 90vh" in page
 
 
 def test_save_api_and_good_exclusivity(client):

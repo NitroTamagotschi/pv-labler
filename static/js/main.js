@@ -106,6 +106,89 @@
     }
   });
 
+  // one shared zoom state per modal: all images always show the same
+  // relative section. Wheel zooms 1x-8x exactly around the cursor position,
+  // dragging pans, double click resets. Interacting with any image drives
+  // all images of the group.
+  function attachGroupZoom(images) {
+    const state = { scale: 1, fx: 0.5, fy: 0.5 }; // focal point in relative coords (0..1)
+
+    function applyAll() {
+      for (const entry of images) {
+        if (state.scale === 1) {
+          entry.img.style.transform = "";
+        } else {
+          entry.img.style.transformOrigin = `${state.fx * 100}% ${state.fy * 100}%`;
+          entry.img.style.transform = `scale(${state.scale})`;
+        }
+        entry.figure.classList.toggle("zoomed", state.scale > 1);
+      }
+    }
+
+    function setState(scale, fx, fy) {
+      state.scale = scale;
+      state.fx = fx;
+      state.fy = fy;
+      applyAll();
+    }
+
+    for (const entry of images) {
+      entry.img.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const rect = entry.img.getBoundingClientRect();
+        // cursor position in relative visual coordinates (0..1)
+        const vx = (event.clientX - rect.left) / rect.width;
+        const vy = (event.clientY - rect.top) / rect.height;
+        const factor = event.deltaY < 0 ? 1.25 : 0.8;
+        const next = Math.min(8, Math.max(1, state.scale * factor));
+        if (next === state.scale) {
+          return;
+        }
+        if (next === 1) {
+          setState(1, 0.5, 0.5);
+          return;
+        }
+        // anchor the point under the cursor: convert visual to local coords
+        const fx = state.fx + (vx - state.fx) / state.scale;
+        const fy = state.fy + (vy - state.fy) / state.scale;
+        setState(next, fx, fy);
+      });
+
+      let dragging = false;
+      let startClientX = 0;
+      let startClientY = 0;
+      let startFx = 0;
+      let startFy = 0;
+      entry.img.addEventListener("pointerdown", (event) => {
+        if (state.scale <= 1) {
+          return;
+        }
+        dragging = true;
+        startClientX = event.clientX;
+        startClientY = event.clientY;
+        startFx = state.fx;
+        startFy = state.fy;
+        entry.img.setPointerCapture(event.pointerId);
+        entry.figure.classList.add("dragging");
+        event.preventDefault();
+      });
+      entry.img.addEventListener("pointermove", (event) => {
+        if (!dragging) {
+          return;
+        }
+        const rect = entry.img.getBoundingClientRect();
+        const fx = startFx - (event.clientX - startClientX) / rect.width;
+        const fy = startFy - (event.clientY - startClientY) / rect.height;
+        setState(state.scale, fx, fy);
+      });
+      entry.img.addEventListener("pointerup", () => {
+        dragging = false;
+        entry.figure.classList.remove("dragging");
+      });
+      entry.img.addEventListener("dblclick", () => setState(1, 0.5, 0.5));
+    }
+  }
+
   function openGroupModal(filename) {
     const url = APP.groupUrl.replace("__FN__", encodeURIComponent(filename));
     fetch(url)
@@ -118,14 +201,20 @@
         document.getElementById("modal-title").textContent = data.group_key;
         const body = document.getElementById("modal-body");
         body.textContent = "";
+        const zoomEntries = [];
         for (const member of data.members) {
           const figure = document.createElement("figure");
           figure.className = "modal-image";
           if (member.preview_url) {
+            const wrap = document.createElement("div");
+            wrap.className = "modal-image-wrap";
             const img = document.createElement("img");
             img.src = member.preview_url;
             img.alt = member.filename;
-            figure.appendChild(img);
+            img.draggable = false;
+            wrap.appendChild(img);
+            figure.appendChild(wrap);
+            zoomEntries.push({ img: img, figure: figure });
           } else {
             const missing = document.createElement("div");
             missing.className = "modal-missing";
@@ -139,6 +228,7 @@
           figure.appendChild(caption);
           body.appendChild(figure);
         }
+        attachGroupZoom(zoomEntries);
         document.getElementById("group-modal").hidden = false;
       })
       .catch((error) => window.alert("Failed to load image group: " + error));

@@ -55,6 +55,8 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 
 ```json
 {
+  "modal_max_width": 1200,
+  "modal_max_height": 800,
   "modalities": [
     { "code": "VI", "display_name": "VI", "filename_code": "VI" },
     { "code": "EL", "display_name": "EL", "filename_code": "EL" },
@@ -73,6 +75,7 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 - `modalities[].code` – Code für UI und CSV-Spalte (`UVF` wird als `uv` gespeichert); `display_name` – Anzeige im Dropdown und auf den Karten.
 - `modalities[].filename_code` – optional, der im Dateinamen verwendete String (Standard: `code`), z. B. `"filename_code": "UV"` für Dateien mit `..._UV_...`.
 - `labels.good` / `labels.defects[]` – jeweils `key` und `display_name`; jedes Defektlabel erzeugt einen Tab und eine CSV-Spalte.
+- Optional: `modal_max_width` / `modal_max_height` – maximale Breite bzw. Höhe des Gruppierungs-Modals in Pixeln (Breiten-Standard 1100, Höhen-Standard 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe.
 - Reserviert: der Modalitäts-Code `all` sowie die Label-Keys `all` und `unclassified` (Kollision mit Tab-Keys).
 
 ## Daten
@@ -81,7 +84,7 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 - `data/labels.csv` – aktueller Labelstatus (max. eine Zeile pro Bilddatei; Aufbau siehe [Bedienung](#aufbau-von-labelscsv))
 - `data/change_log.txt` – Änderungslog (wird ausschließlich ergänzt; Aufbau siehe [Bedienung](#aufbau-von-change_logtxt))
 - `config.json` – Modalitäten und Labels (Aufbau siehe [Bedienung](#aufbau-von-configjson))
-- `static/previews/` – automatisch erzeugte JPEG-Vorschauen der TIFF-Quellen ohne Normalisierung: 8-Bit wird unverändert übernommen, 16-Bit auf das High-Byte reduziert, Float mit 255 skaliert (Cache, Originale bleiben unverändert)
+- `static/previews/` – automatisch erzeugte JPEG-Vorschauen der TIFF-Quellen ohne Normalisierung: 8-Bit wird unverändert übernommen, 16-Bit auf das High-Byte reduziert, Float mit 255 skaliert (Cache, Originale bleiben unverändert). Vorschauen sind maximal 2048 px groß; im Gruppierungs-Modal lässt sich per Mausrad in jedes Bild zoomen (Ziehen zum Verschieben, Doppelklick setzt zurück)
 
 ## Entwicklung
 

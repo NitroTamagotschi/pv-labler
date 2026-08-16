@@ -1,4 +1,6 @@
 {
+  "modal_max_width": 1300,
+  "modal_max_height": 1000,
   "modalities": [
     { "code": "VI", "display_name": "VI", "filename_code": "VI" },
     { "code": "EL", "display_name": "EL", "filename_code": "EL" },

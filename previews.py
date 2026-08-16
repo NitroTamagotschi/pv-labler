@@ -14,7 +14,7 @@ from PIL import Image
 
 from images import IMAGE_EXTENSIONS
 
-PREVIEW_MAX_SIZE = 1024
+PREVIEW_MAX_SIZE = 2048
 PREVIEW_QUALITY = 90
 
 
@@ -62,9 +62,9 @@ class PreviewGenerator:
         return cache_path
 
     def _cache_name(self, filename: str, source: str) -> str:
-        """Return the preview cache filename keyed by filename and source mtime."""
+        """Return the cache filename keyed by filename, source mtime and target size."""
         mtime = os.stat(source).st_mtime_ns
-        digest = hashlib.sha256(f"{filename}|{mtime}".encode()).hexdigest()[:16]
+        digest = hashlib.sha256(f"{filename}|{mtime}|{PREVIEW_MAX_SIZE}".encode()).hexdigest()[:16]
         stem = "".join(
             c if c.isalnum() or c in "-_" else "_" for c in os.path.splitext(filename)[0]
         )
