@@ -25,13 +25,13 @@ class PreviewError(Exception):
 class PreviewGenerator:
     """Generate and cache JPEG previews of the images in images_dir."""
 
-    def __init__(self, images_dir, previews_dir):
+    def __init__(self, images_dir: str, previews_dir: str) -> None:
         """Store the image and preview directories and a generation lock."""
         self.images_dir = os.path.abspath(images_dir)
         self.previews_dir = previews_dir
         self._lock = threading.Lock()
 
-    def resolve_source(self, filename):
+    def resolve_source(self, filename: str) -> str:
         """Validate a requested filename and return the absolute source path."""
         if os.path.basename(filename) != filename:
             raise ValueError("Invalid image filename")
@@ -39,7 +39,7 @@ class PreviewGenerator:
             raise ValueError("Unsupported image extension")
         return os.path.join(self.images_dir, filename)
 
-    def get_preview_path(self, filename):
+    def get_preview_path(self, filename: str) -> str:
         """Return the path of the cached preview, generating it on first use."""
         source = self.resolve_source(filename)
         if not os.path.isfile(source):
@@ -51,7 +51,7 @@ class PreviewGenerator:
                     self._generate(source, cache_path)
         return cache_path
 
-    def _cache_name(self, filename, source):
+    def _cache_name(self, filename: str, source: str) -> str:
         """Return the preview cache filename keyed by filename and source mtime."""
         mtime = os.stat(source).st_mtime_ns
         digest = hashlib.sha256(f"{filename}|{mtime}".encode()).hexdigest()[:16]
@@ -60,7 +60,7 @@ class PreviewGenerator:
         )
         return f"{stem}_{digest}.jpg"
 
-    def _generate(self, source, cache_path):
+    def _generate(self, source: str, cache_path: str) -> None:
         """Write the cached JPEG preview for one source image (atomic replace)."""
         data = self._read_source(source)
         image = Image.fromarray(self._to_uint8(data))
@@ -77,7 +77,7 @@ class PreviewGenerator:
                 pass
             raise
 
-    def _read_source(self, source):
+    def _read_source(self, source: str) -> np.ndarray:
         """Read the image data, using tifffile for TIFFs and Pillow otherwise."""
         if source.lower().endswith((".tif", ".tiff")):
             try:
@@ -95,7 +95,7 @@ class PreviewGenerator:
         except Exception as exc:
             raise PreviewError(f"Cannot read {os.path.basename(source)}: {exc}") from exc
 
-    def _to_uint8(self, data):
+    def _to_uint8(self, data: np.ndarray) -> np.ndarray:
         """Convert arbitrary image data to an 8-bit RGB-safe array."""
         arr = np.asarray(data)
         if arr.size == 0:
@@ -107,7 +107,7 @@ class PreviewGenerator:
             raise PreviewError(f"Unsupported image shape {arr.shape}")
         return self._scale_to_uint8(arr)
 
-    def _scale_to_uint8(self, arr):
+    def _scale_to_uint8(self, arr: np.ndarray) -> np.ndarray:
         """Normalize arbitrary data to uint8 for display.
 
         Float data is scaled by min/max; integer data gets a 2-98 percentile

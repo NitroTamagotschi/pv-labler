@@ -18,6 +18,7 @@ segments, form the variant.
 import functools
 import os
 import re
+from collections.abc import Callable
 
 IMAGE_EXTENSIONS = (".tif", ".tiff", ".jpg", ".jpeg", ".png")
 
@@ -25,7 +26,7 @@ CELL_PATTERN = re.compile(r"^cell\d+$", re.IGNORECASE)
 
 
 @functools.lru_cache(maxsize=8)
-def _modality_pattern(codes_tuple):
+def _modality_pattern(codes_tuple: tuple[str, ...]) -> re.Pattern[str]:
     """Regex matching a modality segment: a code optionally followed by digits."""
     return re.compile(
         r"^(" + "|".join(re.escape(code) for code in codes_tuple) + r")(\d*)$",
@@ -38,7 +39,14 @@ class ImageInfo:
 
     __slots__ = ("filename", "cell_type", "modality", "cell_id", "variant", "group_key")
 
-    def __init__(self, filename, cell_type, modality, cell_id, variant=None):
+    def __init__(
+        self,
+        filename: str,
+        cell_type: str,
+        modality: str,
+        cell_id: str,
+        variant: str | None = None,
+    ) -> None:
         """Store the parsed filename metadata of one image."""
         self.filename = filename
         self.cell_type = cell_type
@@ -48,7 +56,7 @@ class ImageInfo:
         self.group_key = (cell_type, cell_id)
 
 
-def modality_filename_codes(modalities):
+def modality_filename_codes(modalities: list[dict]) -> dict[str, str]:
     """Return {lowercase filename code: canonical modality code}.
 
     Each modality may define an optional 'filename_code' that is used in the
@@ -62,7 +70,7 @@ def modality_filename_codes(modalities):
     return mapping
 
 
-def parse_filename(filename, filename_codes):
+def parse_filename(filename: str, filename_codes: dict[str, str]) -> ImageInfo | None:
     """Parse a filename into ImageInfo, or return None if it is invalid.
 
     filename_codes maps lowercase filename codes to canonical modality codes
@@ -111,7 +119,9 @@ def parse_filename(filename, filename_codes):
     )
 
 
-def scan_images(images_dir, filename_codes, log=None):
+def scan_images(
+    images_dir: str, filename_codes: dict[str, str], log: Callable[..., None] | None = None
+) -> tuple[dict[str, ImageInfo], dict, list[str]]:
     """Scan images_dir once.
 
     Returns (images, groups, unparseable):
@@ -147,7 +157,12 @@ def scan_images(images_dir, filename_codes, log=None):
 class ImageIndex:
     """Scans the image directory once per directory change, then serves the cache."""
 
-    def __init__(self, images_dir, filename_codes, log=None):
+    def __init__(
+        self,
+        images_dir: str,
+        filename_codes: dict[str, str],
+        log: Callable[..., None] | None = None,
+    ) -> None:
         """Store the image directory, modality codes and an empty cache."""
         self.images_dir = images_dir
         self.filename_codes = dict(filename_codes)
@@ -155,7 +170,7 @@ class ImageIndex:
         self._cache = None
         self._signature = None
 
-    def _dir_signature(self):
+    def _dir_signature(self) -> tuple[int, int] | None:
         """Return the directory mtime plus entry count.
 
         The entry count guards against filesystems with coarse timestamp
@@ -169,7 +184,7 @@ class ImageIndex:
         except OSError:
             return None
 
-    def get(self):
+    def get(self) -> tuple[dict[str, ImageInfo], dict]:
         """Return the current (images, groups) tuple, rescanning if needed."""
         signature = self._dir_signature()
         if self._cache is None or signature != self._signature:

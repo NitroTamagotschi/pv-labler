@@ -10,6 +10,7 @@ import datetime as dt
 import os
 import tempfile
 import threading
+from collections.abc import Iterable
 
 # Fixed column prefix, exactly as required by the specification (§8.2).
 FIXED_COLUMNS = ["Datum", "Zeit", "Name of labeler", "datename"]
@@ -17,7 +18,7 @@ FIXED_COLUMNS = ["Datum", "Zeit", "Name of labeler", "datename"]
 SPEC_MODALITY_COLUMNS = ["uv", "vi", "el"]
 
 
-def modality_to_column(code):
+def modality_to_column(code: str) -> str:
     """Map a configured modality code to its CSV column name (§8.2: UVF -> uv)."""
     normalized = code.lower()
     if normalized == "uvf":
@@ -25,7 +26,7 @@ def modality_to_column(code):
     return normalized
 
 
-def modality_columns(modality_codes):
+def modality_columns(modality_codes: list[str]) -> list[str]:
     """CSV column names for the configured modalities.
 
     Uses the fixed order uv,vi,el from the specification whenever the
@@ -37,7 +38,9 @@ def modality_columns(modality_codes):
     return mapped
 
 
-def apply_label_change(labels, good_key, defect_keys, key, value):
+def apply_label_change(
+    labels: dict[str, int], good_key: str, defect_keys: list[str], key: str, value: bool
+) -> dict[str, int]:
     """Return a new label dict with the exclusivity rules of §7.2 applied.
 
     The returned dict always contains every label key (missing keys count as
@@ -60,7 +63,7 @@ def apply_label_change(labels, good_key, defect_keys, key, value):
 class LabelStore:
     """Reads and writes labels.csv and appends change-log entries."""
 
-    def __init__(self, csv_path, log_path, config):
+    def __init__(self, csv_path: str, log_path: str, config: dict) -> None:
         """Store paths, column layout and label keys; create the write lock."""
         self.csv_path = csv_path
         self.log_path = log_path
@@ -73,7 +76,7 @@ class LabelStore:
 
     # -- reading -----------------------------------------------------------
 
-    def _read_rows(self):
+    def _read_rows(self) -> dict[str, dict[str, str]]:
         """Return {filename: raw csv row dict} (one row per image file)."""
         rows = {}
         if not os.path.isfile(self.csv_path):
@@ -86,18 +89,18 @@ class LabelStore:
                 rows[filename] = raw
         return rows
 
-    def _parse_labels(self, raw):
+    def _parse_labels(self, raw: dict[str, str]) -> dict[str, int]:
         """Return {label_key: 0|1} parsed from one raw CSV row."""
         return {key: 1 if str(raw.get(key, "")).strip() == "1" else 0 for key in self.label_keys}
 
-    def get_states(self):
+    def get_states(self) -> dict[str, dict[str, int]]:
         """Return {filename: {label_key: 0|1}} for all stored rows."""
         with self._lock:
             return {
                 filename: self._parse_labels(raw) for filename, raw in self._read_rows().items()
             }
 
-    def get_state(self, filename):
+    def get_state(self, filename: str) -> dict[str, int]:
         """Return the stored label state of one file (all zeros if unlabeled)."""
         with self._lock:
             raw = self._read_rows().get(filename)
@@ -107,7 +110,9 @@ class LabelStore:
 
     # -- writing ------------------------------------------------------------
 
-    def set_label(self, filename, modality_code, key, value, labeler):
+    def set_label(
+        self, filename: str, modality_code: str, key: str, value: bool, labeler: str
+    ) -> dict[str, int]:
         """Apply one checkbox change, persist it and append a log entry.
 
         Returns the new label state {key: 0|1}. The whole read-modify-write
@@ -123,7 +128,9 @@ class LabelStore:
             self._append_log(now, labeler, filename, before, after)
         return after
 
-    def set_states(self, updates, labeler):
+    def set_states(
+        self, updates: dict[str, tuple[str, dict[str, int]]], labeler: str
+    ) -> dict[str, dict[str, int]]:
         """Persist a batch of full label states in one CSV rewrite.
 
         updates maps filename -> (modality_code, {key: 0|1}). Each input state
@@ -161,7 +168,14 @@ class LabelStore:
                 self._append_logs(log_entries)
         return results
 
-    def _build_row(self, filename, modality_code, labels, labeler, now):
+    def _build_row(
+        self,
+        filename: str,
+        modality_code: str,
+        labels: dict[str, int],
+        labeler: str,
+        now: dt.datetime,
+    ) -> dict[str, object]:
         row = {
             "Datum": now.strftime("%Y-%m-%d"),
             "Zeit": now.strftime("%H:%M:%S"),
@@ -175,7 +189,7 @@ class LabelStore:
             row[key] = int(labels.get(key, 0))
         return row
 
-    def _write_csv(self, rows):
+    def _write_csv(self, rows: Iterable[dict[str, object]]) -> None:
         """Atomically rewrite labels.csv (temp file + os.replace)."""
         directory = os.path.dirname(os.path.abspath(self.csv_path))
         os.makedirs(directory, exist_ok=True)
@@ -193,10 +207,17 @@ class LabelStore:
                 pass
             raise
 
-    def _log_line(self, now, labeler, filename, before, after):
+    def _log_line(
+        self,
+        now: dt.datetime,
+        labeler: str,
+        filename: str,
+        before: dict[str, int],
+        after: dict[str, int],
+    ) -> str:
         """Format one change-log entry (timestamp | labeler | file | before | after)."""
 
-        def fmt(state):
+        def fmt(state: dict[str, int]) -> str:
             return ", ".join(f"{key}={state.get(key, 0)}" for key in self.label_keys)
 
         return (
@@ -204,11 +225,20 @@ class LabelStore:
             f"before: {fmt(before)} | after: {fmt(after)}"
         )
 
-    def _append_log(self, now, labeler, filename, before, after):
+    def _append_log(
+        self,
+        now: dt.datetime,
+        labeler: str,
+        filename: str,
+        before: dict[str, int],
+        after: dict[str, int],
+    ) -> None:
         """Append one entry to the change log (existing entries are never rewritten)."""
         self._append_logs([(now, labeler, filename, before, after)])
 
-    def _append_logs(self, entries):
+    def _append_logs(
+        self, entries: Iterable[tuple[dt.datetime, str, str, dict[str, int], dict[str, int]]]
+    ) -> None:
         """Append several change-log entries in a single file open."""
         directory = os.path.dirname(os.path.abspath(self.log_path))
         os.makedirs(directory, exist_ok=True)

@@ -11,6 +11,7 @@ import re
 
 from flask import (
     Flask,
+    Response,
     abort,
     jsonify,
     redirect,
@@ -40,7 +41,7 @@ MODALITY_CODE_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
 RESERVED_TAB_KEYS = ("unclassified", "all")
 
 
-def load_config(path=CONFIG_PATH):
+def load_config(path: str = CONFIG_PATH) -> dict:
     """Load and validate config.json (specification §3.3)."""
     with open(path, encoding="utf-8") as f:
         config = json.load(f)
@@ -48,7 +49,7 @@ def load_config(path=CONFIG_PATH):
     return config
 
 
-def _validate_config(config):
+def _validate_config(config: dict) -> None:
     """Raise ValueError for invalid config.json contents."""
     modalities = config.get("modalities")
     if not isinstance(modalities, list) or not modalities:
@@ -90,7 +91,7 @@ def _validate_config(config):
         raise ValueError("config.json: duplicate label keys")
 
 
-def _matches_tab(state, tab, is_unclassified):
+def _matches_tab(state: dict, tab: str, is_unclassified: bool) -> bool:
     """Return whether a label state belongs to the given tab view."""
     if tab == "unclassified":
         return is_unclassified
@@ -99,7 +100,13 @@ def _matches_tab(state, tab, is_unclassified):
     return bool(state.get(tab, 0))
 
 
-def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, previews_dir=None):
+def create_app(
+    config: dict | None = None,
+    images_dir: str | None = None,
+    labels_csv: str | None = None,
+    change_log: str | None = None,
+    previews_dir: str | None = None,
+) -> Flask:
     """Create the Flask app wired to the given config and storage locations."""
     app = Flask(__name__)
     app.secret_key = os.environ.get("PV_LABLER_SECRET_KEY", "dev-secret-key-change-me")
@@ -118,14 +125,14 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
     app.config["PV_PREVIEWS"] = previews.PreviewGenerator(images_dir, previews_dir or PREVIEWS_DIR)
 
     @app.route("/")
-    def index():
+    def index() -> Response | str:
         """Render the login page, or redirect a logged-in user to main."""
         if "name" in session:
             return redirect(url_for("main"))
         return render_template("login.html")
 
     @app.route("/login", methods=["POST"])
-    def login():
+    def login() -> Response | tuple[str, int]:
         """Store the submitted user name in the session and redirect to main."""
         name = (request.form.get("name") or "").strip()
         if not name:
@@ -134,13 +141,13 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         return redirect(url_for("main"))
 
     @app.route("/logout")
-    def logout():
+    def logout() -> Response:
         """Clear the session and return to the login page."""
         session.clear()
         return redirect(url_for("index"))
 
     @app.route("/main")
-    def main():
+    def main() -> Response | str:
         """Render the main window: gallery, tabs and filters for the session."""
         if "name" not in session:
             return redirect(url_for("index"))
@@ -236,7 +243,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         )
 
     @app.route("/api/save", methods=["POST"])
-    def api_save():
+    def api_save() -> Response:
         """Persist the pending label changes of the Save button in one batch.
 
         Body: {"changes": {filename: {key: 0|1}}}. Everything is validated
@@ -265,7 +272,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         return jsonify(ok=True, states=states)
 
     @app.route("/api/group/<path:filename>")
-    def api_group(filename):
+    def api_group(filename: str) -> Response:
         """Return the images of one group with their previews (JSON)."""
         if "name" not in session:
             return jsonify(ok=False, error="Not logged in"), 401
@@ -301,7 +308,7 @@ def create_app(config=None, images_dir=None, labels_csv=None, change_log=None, p
         return jsonify(ok=True, group_key=f"{info.cell_type}_{info.cell_id}", members=members)
 
     @app.route("/preview")
-    def preview():
+    def preview() -> Response:
         """Serve the cached JPEG preview of one image file."""
         if "name" not in session:
             abort(401)

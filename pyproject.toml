@@ -22,12 +22,19 @@ line-length = 100
 
 [tool.ruff.lint]
 # E/W: pycodestyle (PEP 8), F: pyflakes, I: import sorting,
-# B: flake8-bugbear, UP: pyupgrade, D: pydocstyle (PEP 257)
-select = ["E", "W", "F", "I", "B", "UP", "D"]
+# B: flake8-bugbear, UP: pyupgrade, D: pydocstyle (PEP 257),
+# ANN: flake8-annotations (type annotations)
+select = ["E", "W", "F", "I", "B", "UP", "D", "ANN"]
+
+# banning Any is intentionally not enforced (self/cls rules were removed in ruff 0.16);
+# D203/D213 are the losing sides of incompatible rule pairs (D203 vs D211, D212 vs D213)
+ignore = ["ANN401", "D203", "D213"]
 
 [tool.ruff.lint.per-file-ignores]
 # pytest convention: test functions are documented by their names
 "tests/**/test_*.py" = ["D103"]
+# pytest fixtures get their types injected by pytest
+"tests/**" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -19,6 +19,7 @@ round trip.
 """
 
 import os
+from collections.abc import Iterator
 
 import numpy as np
 import tifffile
@@ -61,7 +62,7 @@ CELL_DEFECTS = [
 ]
 
 
-def load_font(size):
+def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Return a usable TrueType font, falling back to the PIL default."""
     try:
         windows_fonts = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts")
@@ -70,7 +71,7 @@ def load_font(size):
         return ImageFont.load_default()
 
 
-def draw_defects(img, defect_names):
+def draw_defects(img: np.ndarray, defect_names: list[str]) -> np.ndarray:
     """Draw the visible defect names as text into the uint16 image."""
     if not defect_names:
         return img
@@ -89,7 +90,7 @@ def draw_defects(img, defect_names):
     return np.asarray(canvas).astype(np.uint16) * 257
 
 
-def make_cell(modality, seed, defect_names):
+def make_cell(modality: str, seed: int, defect_names: list[str]) -> np.ndarray:
     """Render one synthetic cell image for a modality with the given defects."""
     rng = np.random.default_rng(seed)
     yy, xx = np.mgrid[0:SIZE, 0:SIZE]
@@ -107,17 +108,17 @@ def make_cell(modality, seed, defect_names):
     return draw_defects(img, defect_names)
 
 
-def visible_defect_keys(defect_keys, modality):
+def visible_defect_keys(defect_keys: list[str], modality: str) -> list[str]:
     """Defect keys that are visible in the given modality."""
     return [key for key in defect_keys if modality in DEFECT_VISIBILITY[key]]
 
 
-def display_names(defect_keys):
+def display_names(defect_keys: list[str]) -> list[str]:
     """Display names matching the label checkboxes in the UI."""
     return [key.capitalize() for key in defect_keys]
 
 
-def image_plan():
+def image_plan() -> Iterator[tuple[str, str, list[str]]]:
     """Yield (filename, modality, visible_defect_keys) for every sample image.
 
     Single source of truth for the generated image set; generation and the
@@ -149,7 +150,7 @@ def image_plan():
         yield f"TEST_ALL_{modality}_Cell001.tif", modality, sorted(DEFECT_VISIBILITY)
 
 
-def build_sample_images(images_dir):
+def build_sample_images(images_dir: str) -> list[tuple[str, list[str]]]:
     """Write all sample images from image_plan() into images_dir.
 
     Returns [(filename, visible_defect_keys)] for coverage checks.
@@ -170,7 +171,7 @@ def build_sample_images(images_dir):
     return written
 
 
-def ground_truth_labels():
+def ground_truth_labels() -> dict[str, dict[str, int]]:
     """Return {filename: {label_key: 0|1}} for a correct labeling session.
 
     Good is set for images without any visible defect, otherwise the visible
@@ -189,7 +190,7 @@ def ground_truth_labels():
     return labels
 
 
-def main():
+def main() -> None:
     """Generate the sample image set into data/images/ and sanity-check it."""
     written = build_sample_images(IMAGES_DIR)
     for filename, visible in written:
