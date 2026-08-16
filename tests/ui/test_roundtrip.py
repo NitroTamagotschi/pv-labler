@@ -98,7 +98,7 @@ def test_wrong_label_still_persists(login, live_server, save_and_wait):
     base = live_server["base_url"]
     page.goto(base + "/main?modality=VI&tab=unclassified")
     # per the visibility table this VI image is a "Good" cell without Dark
-    filename = "23-P09-B1_VI_Cell001.tif"
+    filename = "TEST_23-P09-B1_VI_Cell001.tif"
     card = page.locator(f'[data-filename="{filename}"]')
     card.locator('.label-checkbox[data-key="dark"]').click()
     expect(card).to_be_visible()  # pending: stays visible until saved

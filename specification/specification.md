@@ -12,10 +12,12 @@ Die Anwendung wird in **Python** entwickelt und mit dem Webframework **Flask** u
 - Bilder können je Bildmodalität separat gelabelt werden.
 - Mehrere Defekte können pro Bild gleichzeitig gesetzt werden.
 - Ein Bild mit dem Label `Good` darf keine Defektlabels enthalten.
-- Bilder lassen sich nach Modalität und Labelstatus filtern.
+- Bilder lassen sich nach Modalität, Labelstatus und Solarzellentyp filtern.
 - Alle Änderungen werden protokolliert.
 - Der aktuelle Labelstatus wird in einer CSV-Datei gespeichert.
 - Defektkategorien und Bildmodalitäten werden über eine JSON-Konfigurationsdatei definiert.
+- Die Bilddateien können in Unterordnern von `data/images/` organisiert sein.
+- Originalbilder lassen sich in voller Auflösung mit frei wählbarem Helligkeitsfenster (Window/Level) inspizieren; die Bildgruppenansicht erlaubt synchronen Zoom über alle Modalitäten.
 
 ## 2. Begriffe
 
@@ -59,9 +61,9 @@ Dateiname: `config.json`
   "modal_max_width": 1100,
   "modal_max_height": 800,
   "modalities": [
-    { "code": "VI", "display_name": "VI" },
-    { "code": "EL", "display_name": "EL" },
-    { "code": "UVF", "display_name": "UVF" }
+    { "code": "VI", "display_name": "VI", "preview_min": 0, "preview_max": 65535 },
+    { "code": "EL", "display_name": "EL", "preview_min": 0, "preview_max": 30000 },
+    { "code": "UVF", "display_name": "UVF", "preview_min": 0, "preview_max": 45000 }
   ],
   "labels": {
     "good": { "key": "good", "display_name": "Good" },
@@ -105,7 +107,7 @@ Beispiel:
 | `<Modalität>` | `EL` | Bildmodalität, z. B. VI, EL oder UVF/UV |
 | `<Bildidentifikator>` | `Cell001` | Eindeutige Kennzeichnung einer Solarzelle |
 
-Die Bilddateien dürfen in Unterordnern von `data/images/` organisiert sein. Der Identifikator einer Bilddatei ist dann ihr Pfad relativ zu `data/images/` mit `/` als Trenner, z. B. `nested/23-P09-B1_EL_Cell004.tif`; die Regeln dieses Abschnitts gelten für den Dateinamen ohne Ordnername.
+Die Bilddateien dürfen in Unterordnern von `data/images/` organisiert sein. Der Identifikator einer Bilddatei ist dann ihr Pfad relativ zu `data/images/` mit `/` als Trenner, z. B. `nested/TEST_23-P09-B1_EL_Cell004.tif`; die Regeln dieses Abschnitts gelten für den Dateinamen ohne Ordnername.
 
 ### 4.2 Bildgruppe
 
@@ -153,10 +155,12 @@ Das Main Window enthält die folgenden Bereiche:
 3. Bildgalerie mit Bildkarten.
 4. Pop-up-Fenster zur Anzeige aller Modalitäten einer Bildgruppe.
 5. `Save`-Button oben rechts zum Speichern aller ungespeicherten Änderungen.
+6. `Cell type`-Filter-Panel zur Filterung auf einzelne Solarzellentypen.
+7. `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters der gewählten Modalität (schreibt in die `config.json`, siehe 3.3).
 
 ### 6.2 Dropdown: Bildmodalität
 
-Das Dropdown zeigt die in `config.json` definierten Modalitäten an, standardmäßig `VI`, `EL` und `UVF`.
+Das Dropdown zeigt die in `config.json` definierten Modalitäten an, standardmäßig `VI`, `EL` und `UVF`. Zusätzlich existiert die Option `All`, die Bilder aller Modalitäten zeigt.
 
 **Verhalten:**
 
@@ -210,7 +214,13 @@ Beim Öffnen eines Bildes wird ein Pop-up-Fenster angezeigt.
 
 - Schließen-Schaltfläche `X`.
 - Die Bilder aller Modalitäten derselben Bildgruppe, nebeneinander oder responsiv untereinander.
-- Pro Bild die Kennzeichnung der Modalität, z. B. `VI`, `EL`, `UVF`.
+- Pro Bild die Kennzeichnung der Modalität oberhalb des Bildes, z. B. `VI`, `EL`, `UVF`.
+- Standardmäßig wird die Originaldatei angezeigt (siehe 10.3); unter jedem Bild stehen `Vorschau` (Wechsel zur JPEG-Vorschau) und `Download` (Originaldatei herunterladen).
+
+**Interaktion:**
+
+- Mausrad zoomt 1×–8× exakt auf den Cursor zu; alle Bilder der Gruppe zoomen synchron und zeigen denselben relativen Ausschnitt.
+- Bei gezoomtem Bild verschiebt Ziehen mit gedrückter Maustaste den Ausschnitt; Doppelklick setzt den Zoom zurück.
 
 **Beispiel:** Beim Klick auf `23-P09-B1_EL_Cell001.tif` zeigt das Pop-up die zugehörigen Bilder `VI`, `EL` und `UVF` derselben Solarzelle.
 
@@ -328,13 +338,16 @@ Das Änderungslog wird ausschließlich ergänzt; bestehende Einträge dürfen ni
 - HTML mit Jinja2-Templates
 - CSS für responsives Layout
 - JavaScript für unmittelbare UI-Aktualisierungen und das Speichern über den `Save`-Button (AJAX) sowie den Bestätigungsdialog beim Verlassen
-- Modal/Pop-up für die Bildgruppenansicht
+- Modal/Pop-up für die Bildgruppenansicht mit synchronem Zoom und In-Browser-Dekodierung der Original-TIFFs (vendored UTIF-Bibliothek, kein CDN)
+- `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters (Regler und Zahleneingabe, schreibt über einen AJAX-Endpoint in die `config.json`)
 
 ### 10.3 Bildanzeige
 
 Die Quelldateien liegen als `.tif` vor. Da TIFF-Dateien nicht in allen Browsern direkt dargestellt werden können, muss die Anwendung für die Webanzeige Vorschaubilder in einem browserkompatiblen Format erzeugen oder bereitstellen, z. B. PNG oder JPEG.
 
 Die Originaldateien dürfen durch die Vorschau-Erzeugung nicht verändert werden.
+
+Die Vorschau-Konvertierung findet ohne Normalisierung statt: 8-Bit-Daten werden unverändert übernommen, 16-Bit-Daten auf das High-Byte reduziert oder über das konfigurierte Fenster (siehe 3.3) gemappt. Vorschauen sind maximal 2048 px groß und werden pro Bilddatei und Fenster gecacht; das Fenster ist Teil des Cache-Schlüssels.
 
 Ergänzend wird die Originaldatei in der Bildgruppenansicht standardmäßig direkt im Browser angezeigt (Dekodierung per JavaScript, Anzeige mit Min/Max-Window-Reglern über den Datenbereich; Umschalten auf die JPEG-Vorschau ist möglich) und kann als Datei heruntergeladen werden.
 
@@ -347,24 +360,40 @@ Die Window-Regler legen Schwarz- und Weißpunkt der Anzeige fest: Werte unterhal
 - Ungültige Labelkombinationen (`Good` plus Defekt) müssen serverseitig verhindert werden.
 - CSV- und Log-Schreibzugriffe müssen so umgesetzt werden, dass Daten nicht durch parallele Schreibvorgänge beschädigt werden.
 
-## 11. Projektstruktur (Vorschlag)
+## 11. Projektstruktur
 
 ```text
 labeling_tool/
 ├── app.py
+├── labels.py
+├── images.py
+├── previews.py
+├── pyproject.toml            # Abhängigkeiten und Tool-Konfiguration (uv, pytest, ruff)
 ├── config.json
-├── requirements.txt
 ├── data/
 │   ├── images/
 │   ├── labels.csv
-│   └── change_log.csv
+│   └── change_log.txt
 ├── templates/
 │   ├── login.html
 │   └── main.html
-└── static/
-    ├── css/
-    ├── js/
-    └── previews/
+├── static/
+│   ├── css/
+│   ├── js/
+│   │   └── vendor/UTIF.js    # vendored TIFF-Decoder für die Original-Ansicht
+│   └── previews/
+├── scripts/
+│   └── create_sample_images.py
+└── tests/
+    ├── test_app.py
+    ├── test_labels.py
+    ├── test_images.py
+    ├── test_previews.py
+    ├── test_sample_images.py
+    └── ui/
+        ├── conftest.py
+        ├── test_ui.py
+        └── test_roundtrip.py
 ```
 
 ## 12. Akzeptanzkriterien
@@ -386,3 +415,9 @@ Die Implementierung gilt als funktionsfähig, wenn alle folgenden Kriterien erf�
 13. Der `Save`-Button zeigt die Anzahl der geänderten Bilder und ist ohne ungespeicherte Änderungen deaktiviert.
 14. Bilder, deren Label im aktuellen Tab geändert wurde, bleiben bis zum Speichern sichtbar.
 15. Bei ungespeicherten Änderungen fragt der Browser beim Verlassen der Seite über einen Bestätigungsdialog nach.
+16. Bilder in Unterordnern von `data/images/` werden gefunden und über ihren relativen Pfad identifiziert.
+17. Die Bildgruppenansicht zeigt standardmäßig die Originaldatei an, mit Min/Max-Window-Reglern inklusive Wert- und Bittiefen-Anzeige; Umschalten auf die JPEG-Vorschau ist möglich.
+18. In der Bildgruppenansicht zoomt das Mausrad in alle Bilder synchron auf den Cursor zu; Ziehen verschiebt, Doppelklick setzt zurück.
+19. Die Originaldatei kann aus der Bildgruppenansicht heruntergeladen werden.
+20. Das `Preview-Window`-Panel stellt das Vorschau-Fenster der gewählten Modalität ein (Regler und Zahleneingabe) und schreibt Änderungen in die `config.json` zurück; das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt.
+21. Breite und Höhe des Bildgruppen-Pop-ups folgen den optionalen Config-Werten `modal_max_width` und `modal_max_height`.

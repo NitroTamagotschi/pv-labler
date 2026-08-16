@@ -822,6 +822,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-playwright" },
     { name = "ruff" },
+    { name = "werkzeug" },
 ]
 
 [package.metadata]
@@ -837,6 +838,7 @@ dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-playwright", specifier = ">=0.9.0" },
     { name = "ruff", specifier = ">=0.16.3" },
+    { name = "werkzeug", specifier = ">=3.1.8" },
 ]
 
 [[package]]

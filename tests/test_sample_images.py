@@ -55,5 +55,5 @@ def test_ground_truth_good_rows_have_no_defects():
 def test_ground_truth_variant_jpg_matches_its_tif():
     schedule = _load_schedule()
     truth = schedule.ground_truth_labels()
-    assert truth["23_089_A1_EL_LR_Cell001.jpg"] == truth["23_089_A1_EL_Cell001.tif"]
-    assert truth["23_089_A1_EL_LR_Cell002.jpg"] == truth["23_089_A1_EL_Cell002.tif"]
+    assert truth["TEST_23_089_A1_EL_LR_Cell001.jpg"] == truth["TEST_23_089_A1_EL_Cell001.tif"]
+    assert truth["TEST_23_089_A1_EL_LR_Cell002.jpg"] == truth["TEST_23_089_A1_EL_Cell002.tif"]

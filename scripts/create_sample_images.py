@@ -1,5 +1,8 @@
 """Generate synthetic sample images into data/images/ for manual testing.
 
+All generated files carry a TEST_ cell-type prefix so they are recognizable
+as test data and can be filtered as one group in the cell-type filter.
+
 Defect labels are drawn as text into the images. A defect only appears in
 the modalities in which it is visible (per the project's defect-visibility
 table): crack/cross on EL and UVF, dark on EL, corrosion on VI and EL,
@@ -30,7 +33,7 @@ IMAGES_DIR = os.path.normpath(os.path.join(HERE, "..", "data", "images"))
 
 SIZE = 384
 MODALITIES = ["VI", "EL", "UV"]  # filename codes from config.json (UVF -> UV)
-RGB_FILENAME = "23-P09-B1_UV_Cell004.tif"
+RGB_FILENAME = "TEST_23-P09-B1_UV_Cell004.tif"
 
 # Defect visibility per modality (filename codes; UV = the UVF modality).
 # From the user's table:
@@ -136,21 +139,21 @@ def image_plan() -> Iterator[tuple[str, str, list[str]]]:
                 if cell_type == "23-P09-B2" and cell_id == "Cell002" and modality == "UV":
                     continue
                 visible = visible_defect_keys(defects, modality)
-                yield f"{cell_type}_{modality}_{cell_id}.tif", modality, visible
+                yield f"TEST_{cell_type}_{modality}_{cell_id}.tif", modality, visible
     # variant example: EL plus an EL_LR JPG variant with the same content
     for cell in range(1, 3):
         cell_id = f"Cell{cell:03d}"
         defects = CELL_DEFECTS[cell_counter % len(CELL_DEFECTS)]
         cell_counter += 1
         visible = visible_defect_keys(defects, "EL")
-        yield f"23_089_A1_EL_{cell_id}.tif", "EL", visible
-        yield f"23_089_A1_EL_LR_{cell_id}.jpg", "EL", visible
+        yield f"TEST_23_089_A1_EL_{cell_id}.tif", "EL", visible
+        yield f"TEST_23_089_A1_EL_LR_{cell_id}.jpg", "EL", visible
     # full-coverage images: every defect type regardless of the visibility table
     for modality in MODALITIES:
         yield f"TEST_ALL_{modality}_Cell001.tif", modality, sorted(DEFECT_VISIBILITY)
     # one image in a subfolder to exercise the recursive scanner end to end
     # (its group also has missing modalities on purpose)
-    yield "nested/23-P09-B1_EL_Cell004.tif", "EL", ["dark"]
+    yield "nested/TEST_23-P09-B1_EL_Cell004.tif", "EL", ["dark"]
     # one 8-bit RGB capture (like a color UVF camera image) to exercise the
     # multi-channel handling of the original view
     yield RGB_FILENAME, "UV", ["discoloration"]
@@ -220,9 +223,9 @@ def main() -> None:
     )
 
     # one image with an unparseable filename, to demonstrate the §10.4 handling
-    bad = os.path.join(IMAGES_DIR, "badname.tif")
+    bad = os.path.join(IMAGES_DIR, "TEST_badname.tif")
     tifffile.imwrite(bad, np.zeros((64, 64), dtype=np.uint8))
-    print("wrote badname.tif (unparseable on purpose)")
+    print("wrote TEST_badname.tif (unparseable on purpose)")
 
 
 if __name__ == "__main__":

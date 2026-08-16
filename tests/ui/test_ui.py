@@ -73,7 +73,7 @@ def test_group_modal_shows_missing_modality(login, live_server):
     base = live_server["base_url"]
     page.goto(base + "/main?modality=EL&tab=unclassified")
     # this group has no UVF image on purpose
-    card = page.locator('[data-filename="23-P09-B2_EL_Cell002.tif"]')
+    card = page.locator('[data-filename="TEST_23-P09-B2_EL_Cell002.tif"]')
     card.locator(".card-image").click()
     modal = page.locator("#group-modal")
     expect(modal).to_be_visible()
@@ -89,7 +89,7 @@ def test_modal_zoom_wheel_and_double_click_reset(login, live_server):
     page = login
     base = live_server["base_url"]
     page.goto(base + "/main?modality=EL&tab=unclassified")
-    card = page.locator('[data-filename="23-P09-B2_EL_Cell002.tif"]')
+    card = page.locator('[data-filename="TEST_23-P09-B2_EL_Cell002.tif"]')
     card.locator(".card-image").click()
     stages = page.locator("#modal-body .modal-image-stage")
     expect(stages).to_have_count(2)  # VI + EL (UVF missing on purpose)
@@ -114,7 +114,7 @@ def test_modal_original_view_with_window_controls(login, live_server):
     page = login
     base = live_server["base_url"]
     page.goto(base + "/main?modality=EL&tab=unclassified")
-    card = page.locator('[data-filename="23-P09-B2_EL_Cell002.tif"]')
+    card = page.locator('[data-filename="TEST_23-P09-B2_EL_Cell002.tif"]')
     card.locator(".card-image").click()
     figure = page.locator("#modal-body figure").first
     # the original TIFF is the default view and loads on its own
@@ -130,7 +130,7 @@ def test_modal_original_view_with_window_controls(login, live_server):
     expect(figure.locator(".modal-window-bits")).to_have_text("8-Bit")
     assert figure.evaluate("el => el.firstElementChild.tagName") == "FIGCAPTION"
     expect(figure.locator(".modal-image-controls a")).to_have_attribute(
-        "download", "23-P09-B2_VI_Cell002.tif"
+        "download", "TEST_23-P09-B2_VI_Cell002.tif"
     )
     # the min/max window maps the brightest deterministic sample pixel to 255
     max_pixel = canvas.evaluate(
@@ -177,11 +177,11 @@ def test_modal_original_view_rgb(login, live_server):
     page = login
     base = live_server["base_url"]
     page.goto(base + "/main?modality=UVF&tab=unclassified")
-    card = page.locator('[data-filename="23-P09-B1_UV_Cell004.tif"]')
+    card = page.locator('[data-filename="TEST_23-P09-B1_UV_Cell004.tif"]')
     card.locator(".card-image").click()
     # the group also contains the nested EL Cell004 — scope by the image
     figure = page.locator(
-        "#modal-body figure", has=page.locator('img[alt="23-P09-B1_UV_Cell004.tif"]')
+        "#modal-body figure", has=page.locator('img[alt="TEST_23-P09-B1_UV_Cell004.tif"]')
     )
     canvas = figure.locator("canvas")
     expect(canvas).to_be_visible()
@@ -203,14 +203,14 @@ def test_cell_type_panel_multiselect(login, live_server):
     page.locator("#type-filter-trigger").click()
     panel = page.locator("#type-filter-panel")
     expect(panel).to_be_visible()
-    panel.locator('input[value="23-P09-B2"]').check()
-    panel.locator('input[value="24-Q01-A3"]').check()
+    panel.locator('input[value="TEST_23-P09-B2"]').check()
+    panel.locator('input[value="TEST_24-Q01-A3"]').check()
     panel.locator(".apply-btn").click()
-    page.wait_for_url("**cell_type=23-P09-B2*")
+    page.wait_for_url("**cell_type=TEST_23-P09-B2*")
     filenames = page.locator(".card").evaluate_all("els => els.map(e => e.dataset.filename)")
-    assert any(name.startswith("23-P09-B2_VI") for name in filenames)
-    assert any(name.startswith("24-Q01-A3_VI") for name in filenames)
-    assert not any(name.startswith("23-P09-B1_VI") for name in filenames)
+    assert any(name.startswith("TEST_23-P09-B2_VI") for name in filenames)
+    assert any(name.startswith("TEST_24-Q01-A3_VI") for name in filenames)
+    assert not any(name.startswith("TEST_23-P09-B1_VI") for name in filenames)
 
 
 def test_modality_all_shows_badges(login, live_server):

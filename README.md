@@ -92,7 +92,7 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 
 ## Daten
 
-- `data/images/` – Quellbilder, Muster `<Solarzellentyp>_<Modalität>[_<Variante>...]_<Zelle>[_<Zusatz>...].<ext>` (`.tif`, `.tiff`, `.jpg`, `.jpeg`, `.png`). Die Modalität darf ein Ziffernsuffix tragen (`EL01` → EL), die Zelle wird am Muster `Cell<Zahl>` erkannt, alles dazwischen/dahinter ist Variante: z. B. `23-P09-B1_EL_Cell001.tif`, `23_089_A1_EL_LR_Cell001.jpg`, `23-P09-A2_EL_Cell114_normalized.tif`. Bilder dürfen in Unterordnern liegen; der Identifikator ist dann der relative Pfad (z. B. `nested/23-P09-B1_EL_Cell004.tif`)
+- `data/images/` – Quellbilder, Muster `<Solarzellentyp>_<Modalität>[_<Variante>...]_<Zelle>[_<Zusatz>...].<ext>` (`.tif`, `.tiff`, `.jpg`, `.jpeg`, `.png`). Die Modalität darf ein Ziffernsuffix tragen (`EL01` → EL), die Zelle wird am Muster `Cell<Zahl>` erkannt, alles dazwischen/dahinter ist Variante: z. B. `23-P09-B1_EL_Cell001.tif`, `23_089_A1_EL_LR_Cell001.jpg`, `23-P09-A2_EL_Cell114_normalized.tif`. Bilder dürfen in Unterordnern liegen; der Identifikator ist dann der relative Pfad (z. B. `nested/TEST_23-P09-B1_EL_Cell004.tif`)
 - `data/labels.csv` – aktueller Labelstatus (max. eine Zeile pro Bilddatei; Aufbau siehe [Bedienung](#aufbau-von-labelscsv))
 - `data/change_log.txt` – Änderungslog (wird ausschließlich ergänzt; Aufbau siehe [Bedienung](#aufbau-von-change_logtxt))
 - `config.json` – Modalitäten und Labels (Aufbau siehe [Bedienung](#aufbau-von-configjson))
