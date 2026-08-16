@@ -106,36 +106,28 @@ class PreviewGenerator:
             raise PreviewError(f"Cannot read {os.path.basename(source)}: {exc}") from exc
 
     def _to_uint8(self, data: np.ndarray) -> np.ndarray:
-        """Convert arbitrary image data to an 8-bit RGB-safe array."""
+        """Convert image data to uint8 without any normalization.
+
+        Only the conversion needed for display is applied: 8-bit data passes
+        through unchanged, wider integer data keeps its high byte (a dark
+        16-bit recording stays dark), float data (expected in the 0.0-1.0
+        range) is scaled by 255, and boolean masks become 0/255.
+        """
         arr = np.asarray(data)
         if arr.size == 0:
             raise PreviewError("Empty image")
         arr = np.squeeze(arr)
         if arr.ndim == 3 and arr.shape[2] in (3, 4):
-            return self._scale_to_uint8(arr[:, :, :3])
-        if arr.ndim != 2:
+            arr = arr[:, :, :3]
+        elif arr.ndim != 2:
             raise PreviewError(f"Unsupported image shape {arr.shape}")
-        return self._scale_to_uint8(arr)
-
-    def _scale_to_uint8(self, arr: np.ndarray) -> np.ndarray:
-        """Normalize arbitrary data to uint8 for display.
-
-        Float data is scaled by min/max; integer data gets a 2-98 percentile
-        stretch so dark EL recordings remain visible.
-        """
         if arr.dtype == np.bool_:
             return arr.astype(np.uint8) * 255
-        values = arr.astype(np.float64)
-        finite = np.isfinite(values)
-        if not finite.any():
-            return np.zeros(arr.shape[:2], dtype=np.uint8)
+        if arr.dtype == np.uint8:
+            return np.ascontiguousarray(arr)
         if arr.dtype.kind == "f":
-            lo, hi = float(np.min(values[finite])), float(np.max(values[finite]))
-        else:
-            lo, hi = np.nanpercentile(values, 2), np.nanpercentile(values, 98)
-            if not hi > lo:
-                lo, hi = float(np.min(values[finite])), float(np.max(values[finite]))
-        if not hi > lo:
-            hi = lo + 1.0
-        scaled = (values - lo) / (hi - lo)
-        return np.clip(scaled * 255.0, 0.0, 255.0).astype(np.uint8)
+            return np.clip(arr * 255.0, 0.0, 255.0).astype(np.uint8)
+        if arr.dtype.kind == "i":
+            arr = arr.view(f"u{arr.dtype.itemsize}")  # reinterpret the same bits
+        shift = (arr.itemsize - 1) * 8
+        return (arr >> shift).astype(np.uint8)

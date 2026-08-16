@@ -60,6 +60,28 @@ def test_preview_is_cached(generator):
     assert first == second
 
 
+def test_uint16_conversion_keeps_high_byte(generator):
+    """No normalization: a dark 16-bit recording must stay dark."""
+    _, gen = generator
+    dark = np.full((32, 32), 255, dtype=np.uint16)  # below the high-byte range
+    assert gen._to_uint8(dark).max() == 0
+    bright = np.full((32, 32), 65280, dtype=np.uint16)
+    assert gen._to_uint8(bright).max() == 255
+
+
+def test_uint8_passes_through_unchanged(generator):
+    """8-bit data is displayed exactly as stored."""
+    _, gen = generator
+    arr = np.arange(256, dtype=np.uint8).reshape(16, 16)
+    assert np.array_equal(gen._to_uint8(arr), arr)
+
+
+def test_float_is_only_scaled_by_255(generator):
+    _, gen = generator
+    assert gen._to_uint8(np.zeros((4, 4), dtype=np.float32)).max() == 0
+    assert gen._to_uint8(np.ones((4, 4), dtype=np.float32)).min() == 255
+
+
 def test_preview_from_subfolder(generator):
     images_dir, gen = generator
     sub = images_dir / "sub"
