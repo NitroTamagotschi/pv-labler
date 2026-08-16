@@ -73,11 +73,15 @@ def modality_filename_codes(modalities: list[dict]) -> dict[str, str]:
 def parse_filename(filename: str, filename_codes: dict[str, str]) -> ImageInfo | None:
     """Parse a filename into ImageInfo, or return None if it is invalid.
 
-    filename_codes maps lowercase filename codes to canonical modality codes
-    (see modality_filename_codes); matching is case-insensitive. If several
-    segments match, the rightmost one is treated as the modality.
+    filename may be a path relative to images_dir; only the basename is
+    parsed, the directory part is preserved in ImageInfo.filename using "/"
+    as separator. filename_codes maps lowercase filename codes to canonical
+    modality codes (see modality_filename_codes); matching is
+    case-insensitive. If several segments match, the rightmost one is treated
+    as the modality.
     """
-    stem, ext = os.path.splitext(filename)
+    directory, basename = os.path.split(filename.replace("\\", "/"))
+    stem, ext = os.path.splitext(basename)
     if ext.lower() not in IMAGE_EXTENSIONS:
         return None
     parts = stem.split("_")
@@ -111,7 +115,7 @@ def parse_filename(filename: str, filename_codes: dict[str, str]) -> ImageInfo |
     variant_parts.extend(parts[modality_idx + 1 : cell_idx])
     variant_parts.extend(parts[cell_idx + 1 :])
     return ImageInfo(
-        filename=filename,
+        filename=f"{directory}/{basename}" if directory else basename,
         cell_type=cell_type,
         modality=modality,
         cell_id=parts[cell_idx],
@@ -122,35 +126,36 @@ def parse_filename(filename: str, filename_codes: dict[str, str]) -> ImageInfo |
 def scan_images(
     images_dir: str, filename_codes: dict[str, str], log: Callable[..., None] | None = None
 ) -> tuple[dict[str, ImageInfo], dict, list[str]]:
-    """Scan images_dir once.
+    """Recursively scan images_dir (including subfolders) once.
 
     Returns (images, groups, unparseable):
-      images      {filename: ImageInfo}
+      images      {relative path: ImageInfo}  (paths use "/" as separator)
       groups      {group_key: {modality_code: {variant|None: ImageInfo}}}
-      unparseable list of image filenames that could not be assigned to a group
+      unparseable list of relative paths that could not be assigned to a group
     """
     images = {}
     groups = {}
     unparseable = []
     if not os.path.isdir(images_dir):
         return images, groups, unparseable
-    with os.scandir(images_dir) as entries:
-        for entry in sorted(entries, key=lambda e: e.name):
-            if not entry.is_file():
-                continue
-            name = entry.name
-            if not name.lower().endswith(IMAGE_EXTENSIONS):
-                continue
-            info = parse_filename(name, filename_codes)
-            if info is None:
-                unparseable.append(name)
-                continue
-            images[info.filename] = info
-            variant_group = groups.setdefault(info.group_key, {}).setdefault(info.modality, {})
-            variant_group[info.variant] = info
+    paths = []
+    for root, dirnames, filenames in os.walk(images_dir):
+        dirnames.sort()
+        for name in sorted(filenames):
+            relative = os.path.relpath(os.path.join(root, name), images_dir)
+            if relative.lower().endswith(IMAGE_EXTENSIONS):
+                paths.append(relative.replace(os.sep, "/"))
+    for path in paths:
+        info = parse_filename(path, filename_codes)
+        if info is None:
+            unparseable.append(path)
+            continue
+        images[info.filename] = info
+        variant_group = groups.setdefault(info.group_key, {}).setdefault(info.modality, {})
+        variant_group[info.variant] = info
     if log is not None:
-        for name in unparseable:
-            log("Ignoring image with unparseable filename or unknown modality: %s", name)
+        for path in unparseable:
+            log("Ignoring image with unparseable filename or unknown modality: %s", path)
     return images, groups, unparseable
 
 
@@ -171,16 +176,22 @@ class ImageIndex:
         self._signature = None
 
     def _dir_signature(self) -> tuple[int, int] | None:
-        """Return the directory mtime plus entry count.
+        """Return the recursive file count plus the newest file mtime.
 
-        The entry count guards against filesystems with coarse timestamp
-        resolution, where a freshly added file may not change the directory
-        mtime yet.
+        Both are computed over the whole tree so that images appearing in
+        subfolders invalidate the cache. The count guards against filesystems
+        with coarse timestamp resolution, where a freshly added file may not
+        change any directory mtime yet.
         """
         try:
-            mtime = os.stat(self.images_dir).st_mtime_ns
-            count = sum(1 for _ in os.scandir(self.images_dir))
-            return (mtime, count)
+            count = 0
+            newest = 0
+            for root, dirnames, filenames in os.walk(self.images_dir):
+                dirnames.sort()
+                for name in filenames:
+                    count += 1
+                    newest = max(newest, os.stat(os.path.join(root, name)).st_mtime_ns)
+            return (count, newest)
         except OSError:
             return None
 

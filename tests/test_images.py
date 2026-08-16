@@ -103,11 +103,47 @@ def test_scan_and_group(tmp_path):
     assert set(groups[("23-P09-B2", "Cell001")]) == {"VI"}
 
 
+def test_scan_finds_images_in_subfolders(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "23-P09-B1_EL_Cell001.tif").write_bytes(b"x")
+    (tmp_path / "23-P09-B1_VI_Cell001.tif").write_bytes(b"x")
+    images, groups, unparseable = scan_images(str(tmp_path), CODES)
+    assert set(images) == {"sub/23-P09-B1_EL_Cell001.tif", "23-P09-B1_VI_Cell001.tif"}
+    assert unparseable == []
+    # folder boundaries do not break the group
+    assert set(groups[("23-P09-B1", "Cell001")]) == {"VI", "EL"}
+
+
+def test_scan_same_basename_in_two_folders(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "23-P09-B1_EL_Cell001.tif").write_bytes(b"x")
+    (tmp_path / "b" / "23-P09-B1_EL_Cell001.tif").write_bytes(b"x")
+    images, _, _ = scan_images(str(tmp_path), CODES)
+    assert set(images) == {"a/23-P09-B1_EL_Cell001.tif", "b/23-P09-B1_EL_Cell001.tif"}
+
+
+def test_scan_unparseable_in_subfolder_reports_relative_path(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "badname.tif").write_bytes(b"x")
+    _, _, unparseable = scan_images(str(tmp_path), CODES)
+    assert unparseable == ["sub/badname.tif"]
+
+
 def test_index_rescans_on_directory_change(tmp_path):
     index = ImageIndex(str(tmp_path), CODES)
     assert index.get()[0] == {}
     (tmp_path / "23-P09-B1_EL_Cell001.tif").write_bytes(b"x")
     assert "23-P09-B1_EL_Cell001.tif" in index.get()[0]
+
+
+def test_index_rescans_on_subfolder_change(tmp_path):
+    index = ImageIndex(str(tmp_path), CODES)
+    assert index.get()[0] == {}
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "23-P09-B1_EL_Cell001.tif").write_bytes(b"x")
+    assert "sub/23-P09-B1_EL_Cell001.tif" in index.get()[0]
 
 
 def test_group_with_variant_and_plain(tmp_path):

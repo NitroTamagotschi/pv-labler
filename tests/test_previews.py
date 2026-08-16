@@ -60,12 +60,22 @@ def test_preview_is_cached(generator):
     assert first == second
 
 
+def test_preview_from_subfolder(generator):
+    images_dir, gen = generator
+    sub = images_dir / "sub"
+    sub.mkdir()
+    _write_tiff(sub, "23-P09-B1_EL_Cell001.tif", np.zeros((64, 64), dtype=np.uint8))
+    path = gen.get_preview_path("sub/23-P09-B1_EL_Cell001.tif")
+    with Image.open(path) as img:
+        assert img.format == "JPEG"
+
+
 def test_rejects_traversal_and_non_image(generator):
     _, gen = generator
     with pytest.raises(ValueError):
         gen.get_preview_path("../evil.tif")
     with pytest.raises(ValueError):
-        gen.get_preview_path("sub/dir/x.tif")
+        gen.get_preview_path("/abs/23-P09-B1_EL_Cell001.tif")
     with pytest.raises(ValueError):
         gen.get_preview_path("x.bmp")
 

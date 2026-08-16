@@ -197,7 +197,7 @@ def create_app(
             cards.append(
                 {
                     "filename": filename,
-                    "name": os.path.splitext(filename)[0],
+                    "name": os.path.splitext(os.path.basename(filename))[0],
                     "modality_display": modality_displays.get(info.modality, info.modality),
                     "good": state.get(good_key, 0),
                     "defects": {k: state.get(k, 0) for k in defect_keys},

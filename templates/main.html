@@ -63,7 +63,7 @@
       <button type="button" class="card-image" title="Show image group">
         <img src="{{ card.preview_url }}" alt="{{ card.filename }}" loading="lazy">
       </button>
-      <button type="button" class="card-name" title="Show image group">{{ card.name }}
+      <button type="button" class="card-name" title="{{ card.filename }}">{{ card.name }}
         {% if modality == 'all' %}<span class="card-modality">{{ card.modality_display }}</span>{% endif %}
       </button>
       <div class="labels">

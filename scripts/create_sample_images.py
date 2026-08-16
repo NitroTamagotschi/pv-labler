@@ -148,6 +148,9 @@ def image_plan() -> Iterator[tuple[str, str, list[str]]]:
     # full-coverage images: every defect type regardless of the visibility table
     for modality in MODALITIES:
         yield f"TEST_ALL_{modality}_Cell001.tif", modality, sorted(DEFECT_VISIBILITY)
+    # one image in a subfolder to exercise the recursive scanner end to end
+    # (its group also has missing modalities on purpose)
+    yield "nested/23-P09-B1_EL_Cell004.tif", "EL", ["dark"]
 
 
 def build_sample_images(images_dir: str) -> list[tuple[str, list[str]]]:
@@ -161,12 +164,12 @@ def build_sample_images(images_dir: str) -> list[tuple[str, list[str]]]:
     for filename, modality, visible in image_plan():
         seed += 1
         image = make_cell(modality, seed, display_names(visible))
+        target = os.path.join(images_dir, filename)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
         if filename.lower().endswith((".tif", ".tiff")):
-            tifffile.imwrite(os.path.join(images_dir, filename), image)
+            tifffile.imwrite(target, image)
         else:
-            Image.fromarray((image / 256).astype(np.uint8)).save(
-                os.path.join(images_dir, filename), quality=90
-            )
+            Image.fromarray((image / 256).astype(np.uint8)).save(target, quality=90)
         written.append((filename, visible))
     return written
 

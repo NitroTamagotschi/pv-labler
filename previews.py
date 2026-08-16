@@ -32,12 +32,22 @@ class PreviewGenerator:
         self._lock = threading.Lock()
 
     def resolve_source(self, filename: str) -> str:
-        """Validate a requested filename and return the absolute source path."""
-        if os.path.basename(filename) != filename:
+        """Validate a requested filename and return the absolute source path.
+
+        The filename may be a path relative to images_dir (e.g. "sub/x.tif");
+        absolute paths, drive prefixes and ".." traversal are rejected, and
+        the resolved path must stay inside images_dir.
+        """
+        normalized = os.path.normpath(filename)
+        if normalized.startswith(("..", os.sep, "/")) or os.path.splitdrive(normalized)[0]:
             raise ValueError("Invalid image filename")
-        if not filename.lower().endswith(IMAGE_EXTENSIONS):
+        if not normalized.lower().endswith(IMAGE_EXTENSIONS):
             raise ValueError("Unsupported image extension")
-        return os.path.join(self.images_dir, filename)
+        images_root = os.path.abspath(self.images_dir)
+        source = os.path.abspath(os.path.join(images_root, normalized))
+        if os.path.commonpath([images_root, source]) != images_root:
+            raise ValueError("Invalid image filename")
+        return source
 
     def get_preview_path(self, filename: str) -> str:
         """Return the path of the cached preview, generating it on first use."""

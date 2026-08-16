@@ -99,6 +99,8 @@ Beispiel:
 | `<Modalität>` | `EL` | Bildmodalität, z. B. VI, EL oder UVF/UV |
 | `<Bildidentifikator>` | `Cell001` | Eindeutige Kennzeichnung einer Solarzelle |
 
+Die Bilddateien dürfen in Unterordnern von `data/images/` organisiert sein. Der Identifikator einer Bilddatei ist dann ihr Pfad relativ zu `data/images/` mit `/` als Trenner, z. B. `nested/23-P09-B1_EL_Cell004.tif`; die Regeln dieses Abschnitts gelten für den Dateinamen ohne Ordnername.
+
 ### 4.2 Bildgruppe
 
 Bilder mit identischem Solarzellentyp und identischem Bildidentifikator gehören zusammen. Pro Bildgruppe wird jeweils eine Aufnahme je Bildmodalität erwartet.
@@ -262,7 +264,7 @@ Bedeutung:
 | `Datum` | Datum der letzten Änderung. |
 | `Zeit` | Uhrzeit der letzten Änderung. |
 | `Name of labeler` | Name des aktuell angemeldeten Benutzers. |
-| `datename` | Dateiname der gelabelten Bilddatei. |
+| `datename` | Pfad der gelabelten Bilddatei relativ zu `data/images/` (mit `/` als Trenner; für Dateien im Hauptordner nur der Dateiname). |
 | `uv` | `1`, falls die Bilddatei zur UV/UVF-Modalität gehört, sonst `0`. |
 | `vi` | `1`, falls die Bilddatei zur VI-Modalität gehört, sonst `0`. |
 | `el` | `1`, falls die Bilddatei zur EL-Modalität gehört, sonst `0`. |
