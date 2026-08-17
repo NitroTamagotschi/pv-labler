@@ -17,10 +17,12 @@ modality (TEST_ALL) in which every defect type appears regardless of the
 visibility table.
 
 `image_plan()` and `ground_truth_labels()` are the single source of truth for
-what gets generated; the Playwright UI tests use them to verify the labeling
-round trip.
+what gets generated; `write_ground_truth_csv()` serializes them into a
+reference file in the labels.csv schema (§8.2) that the Playwright UI tests
+read and label against.
 """
 
+import csv
 import os
 from collections.abc import Iterator
 
@@ -30,10 +32,31 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.normpath(os.path.join(HERE, "..", "data", "images"))
+GROUND_TRUTH_PATH = os.path.normpath(os.path.join(HERE, "..", "data", "ground_truth.csv"))
 
 SIZE = 384
 MODALITIES = ["VI", "EL", "UV"]  # filename codes from config.json (UVF -> UV)
 RGB_FILENAME = "TEST_23-P09-B1_UV_Cell004.tif"
+
+# labels.csv column per filename code (§8.2; UVF is stored in the uv column)
+MODALITY_COLUMNS = {"VI": "vi", "EL": "el", "UV": "uv"}
+# labels.csv column order per §8.2; defect order matches the config labels
+CSV_COLUMNS = [
+    "Datum",
+    "Zeit",
+    "Name of labeler",
+    "datename",
+    "uv",
+    "vi",
+    "el",
+    "good",
+    "crack",
+    "cross",
+    "dark",
+    "corrosion",
+    "discoloration",
+    "delamination",
+]
 
 # Defect visibility per modality (filename codes; UV = the UVF modality).
 # From the user's table:
@@ -159,10 +182,14 @@ def image_plan() -> Iterator[tuple[str, str, list[str]]]:
     yield RGB_FILENAME, "UV", ["discoloration"]
 
 
-def build_sample_images(images_dir: str) -> list[tuple[str, list[str]]]:
+def build_sample_images(
+    images_dir: str, ground_truth_csv: str | None = None
+) -> list[tuple[str, list[str]]]:
     """Write all sample images from image_plan() into images_dir.
 
-    Returns [(filename, visible_defect_keys)] for coverage checks.
+    When ground_truth_csv is given, the reference labels are written there
+    in the labels.csv schema. Returns [(filename, visible_defect_keys)] for
+    coverage checks.
     """
     os.makedirs(images_dir, exist_ok=True)
     written = []
@@ -180,7 +207,29 @@ def build_sample_images(images_dir: str) -> list[tuple[str, list[str]]]:
         else:
             Image.fromarray(image).save(target, quality=90)
         written.append((filename, visible))
+    if ground_truth_csv:
+        write_ground_truth_csv(ground_truth_csv)
     return written
+
+
+def write_ground_truth_csv(path: str) -> None:
+    """Write the reference labels of a perfect labeling pass to path.
+
+    The file uses the labels.csv schema per §8.2: Datum/Zeit stay empty,
+    the labeler is "GroundTruth", and the label and modality columns carry
+    the correct values for every sample image.
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    truth = ground_truth_labels()
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(CSV_COLUMNS)
+        for filename, modality, _visible in image_plan():
+            modality_values = {MODALITY_COLUMNS[modality]: 1}
+            row = ["", "", "GroundTruth", filename]
+            row.extend(modality_values.get(column, 0) for column in ["uv", "vi", "el"])
+            row.extend(truth[filename][key] for key in ["good", *DEFECT_VISIBILITY])
+            writer.writerow(row)
 
 
 def ground_truth_labels() -> dict[str, dict[str, int]]:
@@ -204,9 +253,10 @@ def ground_truth_labels() -> dict[str, dict[str, int]]:
 
 def main() -> None:
     """Generate the sample image set into data/images/ and sanity-check it."""
-    written = build_sample_images(IMAGES_DIR)
+    written = build_sample_images(IMAGES_DIR, ground_truth_csv=GROUND_TRUTH_PATH)
     for filename, visible in written:
         print(f"wrote {filename} ({', '.join(display_names(visible)) or 'good'})")
+    print(f"wrote ground_truth.csv ({len(written)} rows)")
 
     # sanity checks: every defect type must actually be drawn somewhere, and
     # some images must show more than one defect

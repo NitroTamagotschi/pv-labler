@@ -292,6 +292,8 @@ Die Modalitätsspalten `uv`, `vi` und `el` sind binär. Für einen gültigen Dat
 
 > Wenn der konfigurierte Modalitätscode `UVF` lautet, wird dieser für die Speicherung in die geforderte CSV-Spalte `uv` abgebildet.
 
+Der Sample-Bildgenerator `scripts/create_sample_images.py` schreibt beim Erzeugen der Testbilder eine `ground_truth.csv` im selben Schema (`Datum`/`Zeit` leer, `Name of labeler` = `GroundTruth`); sie dient als Referenz eines korrekten Labeldurchlaufs und wird von den UI-Tests eingelesen und mit der erzeugten `labels.csv` verglichen.
+
 ### 8.3 Beispiel
 
 ```csv
@@ -374,7 +376,8 @@ labeling_tool/
 ├── data/
 │   ├── images/
 │   ├── labels.csv
-│   └── change_log.txt
+│   ├── change_log.txt
+│   └── ground_truth.csv       # optional: vom Sample-Generator erzeugt, Referenz für die UI-Tests
 ├── templates/
 │   ├── login.html
 │   └── main.html

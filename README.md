@@ -117,7 +117,7 @@ Einmalig den Browser installieren:
 uv run playwright install chromium
 ```
 
-Die UI-Suite startet die App mit frisch generierten Testbildern in Temp-Verzeichnissen und prüft u. a. den kompletten Round-Trip: Bilder werden über die Checkboxen gemäß dem Generator-Zeitplan gelabelt und per `Save` gespeichert, danach wird `labels.csv` gegen die Ground Truth verglichen, und das Change-Log wird geprüft.
+Die UI-Suite startet die App mit frisch generierten Testbildern in Temp-Verzeichnissen und prüft u. a. den kompletten Round-Trip: Der Generator schreibt dabei eine `ground_truth.csv` (im `labels.csv`-Schema) als Referenz; die Bilder werden über die Checkboxen gemäß dieser Datei gelabelt und per `Save` gespeichert, danach wird `labels.csv` Spalte für Spalte gegen `ground_truth.csv` verglichen, und das Change-Log wird geprüft.
 
 Die erzeugten `labels.csv`/`change_log.txt` landen dabei in den Temp-Verzeichnissen von pytest (nicht in `data/`) und entstehen erst beim ersten Klick auf `Save`. Zum Inspizieren während des Debuggens können die Temp-Dateien über `--basetemp` im Projekt abgelegt werden:
 

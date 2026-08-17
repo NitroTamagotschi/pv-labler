@@ -1,7 +1,12 @@
 """Tests for the sample image schedule (scripts/create_sample_images.py)."""
 
+import csv
 import importlib.util
 from pathlib import Path
+
+from app import load_config
+from images import modality_filename_codes, parse_filename
+from labels import modality_to_column
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "create_sample_images.py"
@@ -57,3 +62,53 @@ def test_ground_truth_variant_jpg_matches_its_tif():
     truth = schedule.ground_truth_labels()
     assert truth["TEST_23_089_A1_EL_LR_Cell001.jpg"] == truth["TEST_23_089_A1_EL_Cell001.tif"]
     assert truth["TEST_23_089_A1_EL_LR_Cell002.jpg"] == truth["TEST_23_089_A1_EL_Cell002.tif"]
+
+
+def test_ground_truth_csv_schema_and_values(tmp_path):
+    """ground_truth.csv uses the labels.csv schema (§8.2) and matches the labels."""
+    schedule = _load_schedule()
+    path = tmp_path / "ground_truth.csv"
+    schedule.write_ground_truth_csv(str(path))
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        assert reader.fieldnames == [
+            "Datum",
+            "Zeit",
+            "Name of labeler",
+            "datename",
+            "uv",
+            "vi",
+            "el",
+            "good",
+            "crack",
+            "cross",
+            "dark",
+            "corrosion",
+            "discoloration",
+            "delamination",
+        ]
+        rows = {row["datename"]: row for row in reader}
+    truth = schedule.ground_truth_labels()
+    assert set(rows) == set(truth)
+    for filename, row in rows.items():
+        assert row["Datum"] == "" and row["Zeit"] == ""
+        assert row["Name of labeler"] == "GroundTruth"
+        for key in ["good", *schedule.DEFECT_VISIBILITY]:
+            assert row[key] == str(truth[filename][key]), filename
+
+
+def test_ground_truth_csv_modality_columns_match_config(tmp_path):
+    """uv/vi/el agree with the app's config-driven filename mapping."""
+    schedule = _load_schedule()
+    path = tmp_path / "ground_truth.csv"
+    schedule.write_ground_truth_csv(str(path))
+    app_config = load_config()
+    filename_codes = modality_filename_codes(app_config["modalities"])
+    columns = {m["code"]: modality_to_column(m["code"]) for m in app_config["modalities"]}
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            info = parse_filename(row["datename"], filename_codes)
+            assert info is not None, row["datename"]
+            for code, column in columns.items():
+                expected = "1" if code == info.modality else "0"
+                assert row[column] == expected, row["datename"]

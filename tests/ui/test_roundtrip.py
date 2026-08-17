@@ -6,13 +6,10 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import expect
 
-from app import load_config
-from images import modality_filename_codes, parse_filename
-from labels import modality_to_column
-
 pytestmark = pytest.mark.ui
 
 DEFECT_KEYS = ["crack", "cross", "dark", "corrosion", "discoloration", "delamination"]
+LABEL_KEYS = ["good"] + DEFECT_KEYS
 
 
 def _read_labels(path):
@@ -20,19 +17,33 @@ def _read_labels(path):
         return {row["datename"]: row for row in csv.DictReader(f)}
 
 
+def _read_ground_truth(path):
+    """Read ground_truth.csv into {filename: row} with label keys as ints."""
+    with open(path, newline="", encoding="utf-8") as f:
+        truth = {}
+        for row in csv.DictReader(f):
+            for key in LABEL_KEYS:
+                row[key] = int(row[key])
+            truth[row["datename"]] = row
+        return truth
+
+
 def _state_str(state):
     """Return the change-log format for one label state, in config key order."""
     return ", ".join(f"{key}={state.get(key, 0)}" for key in ["good"] + DEFECT_KEYS)
 
 
-def test_roundtrip_matches_ground_truth(login, live_server, truth, save_and_wait):
+def test_roundtrip_matches_ground_truth(login, live_server, save_and_wait):
     """Label every sample image in the All tab and verify the saved CSV.
 
-    All images are labeled in a single pass, saved once via the button, then
-    labels.csv is compared with the ground truth derived from the schedule.
+    The reference is the ground_truth.csv file written by the sample
+    generator: all images are labeled according to it in a single pass,
+    saved once via the button, then labels.csv is compared column by
+    column with the reference.
     """
     page = login
     base = live_server["base_url"]
+    truth = _read_ground_truth(live_server["ground_truth_csv"])
     page.goto(base + "/main?modality=all&tab=all")
 
     # one pass over the All tab: cards never leave the view before saving,
@@ -40,7 +51,7 @@ def test_roundtrip_matches_ground_truth(login, live_server, truth, save_and_wait
     for filename, expected in truth.items():
         card = page.locator(f'[data-filename="{filename}"]')
         expect(card).to_be_visible()
-        for key in ["good"] + DEFECT_KEYS:
+        for key in LABEL_KEYS:
             checkbox = card.locator(f'.label-checkbox[data-key="{key}"]')
             if expected[key] and not checkbox.is_checked():
                 checkbox.click()
@@ -48,25 +59,19 @@ def test_roundtrip_matches_ground_truth(login, live_server, truth, save_and_wait
 
     save_and_wait()
 
-    # verify the persisted CSV against the ground truth.
+    # verify the persisted CSV against the ground truth file: same images,
+    # identical label and modality columns (only the session metadata
+    # date/time/labeler differs by design)
     rows = _read_labels(live_server["labels_csv"])
     assert set(rows) == set(truth)
-
-    app_config = load_config()
-    filename_codes = modality_filename_codes(app_config["modalities"])
-    modality_cols = {m["code"]: modality_to_column(m["code"]) for m in app_config["modalities"]}
     for filename, expected in truth.items():
         row = rows[filename]
         assert row["Name of labeler"] == "UI Tester", filename
-        for key in ["good"] + DEFECT_KEYS:
+        for key in LABEL_KEYS + ["uv", "vi", "el"]:
             assert row[key] == str(expected[key]), f"{filename}: column {key}"
-        info = parse_filename(filename, filename_codes)
-        assert info is not None, filename
-        for code, column in modality_cols.items():
-            assert row[column] == ("1" if code == info.modality else "0"), filename
 
     # every tab shows exactly the images whose ground truth has that label
-    for key in ["good"] + DEFECT_KEYS:
+    for key in LABEL_KEYS:
         page.goto(f"{base}/main?modality=all&tab={key}")
         visible = page.locator(".card").evaluate_all("els => els.map(e => e.dataset.filename)")
         assert set(visible) == {f for f, e in truth.items() if e[key]}, key

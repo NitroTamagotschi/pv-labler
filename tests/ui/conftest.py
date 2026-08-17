@@ -37,7 +37,9 @@ def live_server(tmp_path, sample_script):
     images_dir = tmp_path / "images"
     previews_dir = tmp_path / "previews"
     data_dir = tmp_path / "data"
-    sample_script.build_sample_images(str(images_dir))
+    sample_script.build_sample_images(
+        str(images_dir), ground_truth_csv=str(data_dir / "ground_truth.csv")
+    )
 
     app = create_app(
         config=load_config(),
@@ -62,6 +64,7 @@ def live_server(tmp_path, sample_script):
         "labels_csv": data_dir / "labels.csv",
         "change_log": data_dir / "change_log.txt",
         "config_path": data_dir / "config.json",
+        "ground_truth_csv": data_dir / "ground_truth.csv",
     }
     server.shutdown()
     thread.join(timeout=5)
@@ -90,12 +93,6 @@ def login(page, live_server):
     page.click("button[type=submit]")
     page.wait_for_url("**/main*")
     return page
-
-
-@pytest.fixture
-def truth(sample_script):
-    """Return the ground truth labels of the generated sample images."""
-    return sample_script.ground_truth_labels()
 
 
 @pytest.fixture
