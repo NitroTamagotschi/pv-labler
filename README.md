@@ -99,11 +99,12 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 - `labels.good` / `labels.defects[]` – jeweils `key` und `display_name`; jedes Defektlabel erzeugt einen Tab und eine CSV-Spalte.
 - Optional: `modal_max_width` / `modal_max_height` – maximale Breite bzw. Höhe des Gruppierungs-Modals in Pixeln (Breiten-Standard 1100, Höhen-Standard 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe.
 - Optional pro Modalität: `preview_min` / `preview_max` – lineares Vorschau-Fenster in Rohwerten (außerhalb wird geklemmt) für die JPEG-Vorschau von Ganzzahl-Daten; ohne Angabe bleibt das High-Byte- bzw. 1:1-Verhalten. Das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt — ein 16-Bit-Fenster kann 8-Bit-Bilder also nicht „zerdrücken" (und umgekehrt).
+- Optional: `images_dir` – absoluter Pfad zum Ordner mit den Quellbildern (statt `data/images/`); der Ordner muss existieren und wird nicht automatisch angelegt. Die `datename`-Werte in `labels.csv` bleiben relativ zu diesem Ordner.
 - Reserviert: der Modalitäts-Code `all` sowie die Label-Keys `all` und `unclassified` (Kollision mit Tab-Keys).
 
 ## Daten
 
-- `data/images/` – Quellbilder, Muster `<Solarzellentyp>_<Modalität>[_<Variante>...]_<Zelle>[_<Zusatz>...].<ext>` (`.tif`, `.tiff`, `.jpg`, `.jpeg`, `.png`). Die Modalität darf ein Ziffernsuffix tragen (`EL01` → EL), die Zelle wird am Muster `Cell<Zahl>` erkannt, alles dazwischen/dahinter ist Variante: z. B. `23-P09-B1_EL_Cell001.tif`, `23_089_A1_EL_LR_Cell001.jpg`, `23-P09-A2_EL_Cell114_normalized.tif`. Bilder dürfen in Unterordnern liegen; der Identifikator ist dann der relative Pfad (z. B. `nested/TEST_23-P09-B1_EL_Cell004.tif`)
+- `data/images/` – Quellbilder, Muster `<Solarzellentyp>_<Modalität>[_<Variante>...]_<Zelle>[_<Zusatz>...].<ext>` (`.tif`, `.tiff`, `.jpg`, `.jpeg`, `.png`). Die Modalität darf ein Ziffernsuffix tragen (`EL01` → EL), die Zelle wird am Muster `Cell<Zahl>` erkannt, alles dazwischen/dahinter ist Variante: z. B. `23-P09-B1_EL_Cell001.tif`, `23_089_A1_EL_LR_Cell001.jpg`, `23-P09-A2_EL_Cell114_normalized.tif`. Bilder dürfen in Unterordnern liegen; der Identifikator ist dann der relative Pfad (z. B. `nested/TEST_23-P09-B1_EL_Cell004.tif`). Alternativ zeigt der optionale Config-Eintrag `images_dir` auf einen anderen Ordner.
 - `data/labels.csv` – aktueller Labelstatus (max. eine Zeile pro Bilddatei; Aufbau siehe [Bedienung](#aufbau-von-labelscsv))
 - `data/change_log.txt` – Änderungslog (wird ausschließlich ergänzt; Aufbau siehe [Bedienung](#aufbau-von-change_logtxt))
 - `config.json` – Modalitäten und Labels (Aufbau siehe [Bedienung](#aufbau-von-configjson))

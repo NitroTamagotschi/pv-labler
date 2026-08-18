@@ -88,6 +88,56 @@ def test_modal_size_validation_and_default(tmp_path):
         assert b"--modal-max-height: 90vh" in page
 
 
+def test_config_images_dir_is_used(tmp_path):
+    """A configured images_dir replaces data/images/; its images are listed."""
+    external = tmp_path / "external"
+    external.mkdir()
+    tifffile.imwrite(str(external / "23-P09-B1_VI_Cell001.tif"), np.zeros((32, 32), dtype=np.uint8))
+    app = create_app(
+        config=dict(CONFIG, images_dir=str(external)),
+        labels_csv=str(tmp_path / "labels.csv"),
+        change_log=str(tmp_path / "change_log.txt"),
+        previews_dir=str(tmp_path / "previews"),
+    )
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        client.post("/login", data={"name": "Max"})
+        page = client.get("/main?modality=all&tab=unclassified")
+        assert b"23-P09-B1_VI_Cell001" in page.data
+
+
+def test_config_images_dir_must_exist(tmp_path):
+    """A configured images_dir that is missing fails loudly at startup."""
+    with pytest.raises(ValueError, match="does not exist"):
+        create_app(
+            config=dict(CONFIG, images_dir=str(tmp_path / "missing")),
+            labels_csv=str(tmp_path / "labels.csv"),
+            change_log=str(tmp_path / "change_log.txt"),
+            previews_dir=str(tmp_path / "previews"),
+        )
+
+
+def test_config_images_dir_validation():
+    """The images_dir key must be a non-empty string when present."""
+    for value in (42, True, [], "   "):
+        with pytest.raises(ValueError, match="images_dir"):
+            _validate_config(dict(CONFIG, images_dir=value))
+
+
+def test_explicit_images_dir_wins_over_config(tmp_path):
+    """The create_app parameter takes precedence over the config entry."""
+    explicit = tmp_path / "explicit"
+    explicit.mkdir()
+    app = create_app(
+        config=dict(CONFIG, images_dir=str(tmp_path / "nowhere")),
+        images_dir=str(explicit),
+        labels_csv=str(tmp_path / "labels.csv"),
+        change_log=str(tmp_path / "change_log.txt"),
+        previews_dir=str(tmp_path / "previews"),
+    )
+    assert app.config["PV_IMAGES_DIR"] == str(explicit)
+
+
 def test_save_api_and_good_exclusivity(client):
     """Saving Good clears a previously stored defect (cascade from stored state)."""
     client.post("/login", data={"name": "Max"})

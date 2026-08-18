@@ -116,6 +116,10 @@ def _validate_config(config: dict) -> None:
         ):
             raise ValueError(f"config.json: '{key}' must be an integer >= 200")
 
+    images_dir = config.get("images_dir")
+    if images_dir is not None and (not isinstance(images_dir, str) or not images_dir.strip()):
+        raise ValueError("config.json: 'images_dir' must be a non-empty string")
+
 
 def _matches_tab(state: dict, tab: str, is_unclassified: bool) -> bool:
     """Return whether a label state belongs to the given tab view."""
@@ -139,6 +143,9 @@ def create_app(
     config_path is the file the preview-window endpoint writes back to; it
     defaults to config.json when the app loads its own config from disk and
     is None (no write-back) when a config dict is passed without a path.
+    images_dir falls back to the config's optional 'images_dir' entry and
+    then to data/images/; a configured directory must already exist, and an
+    explicit images_dir parameter always wins.
     """
     app = Flask(__name__)
     app.secret_key = os.environ.get("PV_LABLER_SECRET_KEY", "dev-secret-key-change-me")
@@ -146,6 +153,12 @@ def create_app(
         config = load_config()
         config_path = config_path if config_path is not None else CONFIG_PATH
     app.config["PV_CONFIG_PATH"] = config_path
+    if images_dir is None and config.get("images_dir"):
+        # a configured directory must already exist; silently creating it
+        # would leave the user with an empty gallery and no hint why
+        images_dir = config["images_dir"]
+        if not os.path.isdir(images_dir):
+            raise ValueError(f"config.json: 'images_dir' {images_dir!r} does not exist")
     images_dir = images_dir or IMAGES_DIR
     os.makedirs(images_dir, exist_ok=True)
 

@@ -85,6 +85,8 @@ Optional können `modal_max_width` und `modal_max_height` gesetzt werden: maxima
 
 Optional können pro Modalität `preview_min` und `preview_max` gesetzt werden (gemeinsam, `min < max`): ein lineares Anzeigefenster in Rohwerten für die JPEG-Vorschau von Ganzzahl-Daten, außerhalb des Fensters wird geklemmt. Das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt. Ohne Angabe werden 8-Bit-Werte unverändert übernommen und bei 16-Bit das High-Byte verwendet. Die Werte können zur Laufzeit über das Preview-Window-Panel der Oberfläche geändert werden; die Anwendung schreibt Änderungen in die `config.json` zurück.
 
+Optional kann `images_dir` gesetzt werden: ein absoluter Pfad zum Ordner mit den Quellbildern (statt `data/images/`). Der Ordner muss existieren und wird nicht automatisch angelegt. Die `datename`-Werte in `labels.csv` bleiben relativ zu diesem Ordner.
+
 ## 4. Bilddateien und Zuordnung
 
 ### 4.1 Dateinamensformat
