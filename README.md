@@ -5,12 +5,23 @@ Implementiert nach [specification/specification.md](specification/specification.
 
 ## Setup
 
-Voraussetzungen: [uv](https://docs.astral.sh/uv/) und Python ≥ 3.10.
+Voraussetzungen:
+
+- **Python ≥ 3.10**: muss installiert und über die Kommandozeile erreichbar sein (Prüfung: `python --version`). Download: <https://www.python.org/downloads/> — bei der Windows-Installation das Häkchen „Add python.exe to PATH“ setzen.
+- **uv**: der Paketmanager des Projekts; er installiert alle Abhängigkeiten und führt Skripte und Tests aus (Prüfung: `uv --version`). Installation: <https://docs.astral.sh/uv/getting-started/installation/>.
 
 ```bash
-uv sync                                           # installiert alle Dependencies
-uv run python scripts/create_sample_images.py     # optional: Demo-Bilder erzeugen (8-Bit, Defekte als Text, nur auf den Modalitäten sichtbar, auf denen sie laut Sichtbarkeitstabelle erkennbar sind)
-uv run python app.py                              # startet auf http://127.0.0.1:5000
+# installiert alle Dependencies
+uv sync    
+
+# App starten (http://127.0.0.1:5000)
+uv run python app.py
+```
+
+Demo-Bilder erzeugen (optional — 8-Bit, Defekte als Text eingeblendet, nur auf den Modalitäten sichtbar, auf denen sie laut Sichtbarkeitstabelle erkennbar sind):
+
+```bash
+uv run python scripts/create_sample_images.py
 ```
 
 ## Bedienung
@@ -151,3 +162,7 @@ uv run ruff format --check .   # Formatierung nur prüfen (z. B. für CI)
 ```
 
 Die Docstring- (D) und Typannotation-Regeln (ANN) gelten für den Produktionscode; Testdateien sind über per-file-ignores davon ausgenommen.
+
+## Lizenz
+
+© 2026 Kevin Fuhrer · Dieses Projekt ist unter der GNU General Public License v3.0 lizenziert — der vollständige Lizenztext steht in [LICENSE](LICENSE).
