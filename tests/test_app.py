@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import tifffile
 
-from app import _validate_config, create_app
+from app import _validate_config, create_app, warm_previews
 
 CONFIG = {
     "modal_max_width": 1400,
@@ -198,6 +198,25 @@ def test_preview_route(client):
     assert res.mimetype == "image/jpeg"
     # EL has a configured preview window; the request must still work
     assert client.get("/preview?file=23-P09-B1_EL_Cell001.tif").status_code == 200
+
+
+def test_preview_warmup_generates_all_previews(tmp_path):
+    """warm_previews() pre-generates one cached preview per known image."""
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for name in ("23-P09-B1_VI_Cell001.tif", "23-P09-B1_EL_Cell001.tif"):
+        tifffile.imwrite(str(images_dir / name), np.zeros((32, 32), dtype=np.uint8))
+    previews_dir = tmp_path / "previews"
+    app = create_app(
+        config=CONFIG,
+        images_dir=str(images_dir),
+        labels_csv=str(tmp_path / "labels.csv"),
+        change_log=str(tmp_path / "change_log.txt"),
+        previews_dir=str(previews_dir),
+    )
+    warm_previews(app)
+    assert len(list(previews_dir.glob("*.jpg"))) == 2
+    assert not list(previews_dir.glob("*.tmp"))  # no temp files left behind
 
 
 def test_preview_window_validation():

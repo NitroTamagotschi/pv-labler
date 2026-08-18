@@ -352,6 +352,8 @@ Die Originaldateien dürfen durch die Vorschau-Erzeugung nicht verändert werden
 
 Die Vorschau-Konvertierung findet ohne Normalisierung statt: 8-Bit-Daten werden unverändert übernommen, 16-Bit-Daten auf das High-Byte reduziert oder über das konfigurierte Fenster (siehe 3.3) gemappt. Vorschauen sind maximal 2048 px groß und werden pro Bilddatei und Fenster gecacht; das Fenster ist Teil des Cache-Schlüssels.
 
+Beim Start der Anwendung werden fehlende Vorschauen im Hintergrund vorab erzeugt, und die Galerie lädt Kartenbilder erst, wenn sie in den sichtbaren Bereich scrollen (Lazy Loading). Große Bildmengen blockieren dadurch die Bedienung nicht; fehlende Vorschauen werden weiterhin on demand erzeugt.
+
 Ergänzend wird die Originaldatei in der Bildgruppenansicht standardmäßig direkt im Browser angezeigt (Dekodierung per JavaScript, Anzeige mit Min/Max-Window-Reglern über den Datenbereich; Umschalten auf die JPEG-Vorschau ist möglich) und kann als Datei heruntergeladen werden.
 
 Die Window-Regler legen Schwarz- und Weißpunkt der Anzeige fest: Werte unterhalb von `Min` werden schwarz, oberhalb von `Max` weiß dargestellt, Werte dazwischen linear gespreizt. Startzustand ist der volle Datenbereich des Bildes. Die Regler zeigen ihren aktuellen Wert und die Bittiefe des angezeigten Bildes an. Die Regler verändern ausschließlich die Anzeige, nicht die Bilddaten; gefundene Werte können über das Preview-Window-Panel des Hauptfensters in die `config.json` übernommen werden.

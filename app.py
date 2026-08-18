@@ -10,6 +10,7 @@ import json
 import os
 import re
 import tempfile
+import threading
 
 from flask import (
     Flask,
@@ -393,7 +394,10 @@ def create_app(
             abort(401)
         filename = request.args.get("file", "")
         generator = app.config["PV_PREVIEWS"]
-        info = app.config["PV_INDEX"].get()[0].get(filename)
+        # the modality is parsed from the filename instead of consulting the
+        # index: the index walks the whole image tree, which is far too slow
+        # to repeat for every preview request of a large image set
+        info = images.parse_filename(filename, app.config["PV_INDEX"].filename_codes)
         window = app.config["PV_PREVIEW_WINDOWS"].get(info.modality) if info is not None else None
         try:
             cache_path = generator.get_preview_path(filename, window=window)
@@ -470,10 +474,33 @@ def create_app(
         }
         return jsonify(ok=True)
 
+    # pre-generate every missing preview in the background so the first
+    # browse of a large image set does not queue thousands of on-demand
+    # generations behind the single request path
+    threading.Thread(target=warm_previews, args=(app,), daemon=True, name="preview-warmup").start()
+
     return app
+
+
+def warm_previews(app: Flask) -> None:
+    """Generate the preview of every known image, skipping cached ones.
+
+    Runs in a background thread at startup; one unreadable image only logs
+    a warning instead of stopping the warm-up for the remaining images.
+    """
+    generator = app.config["PV_PREVIEWS"]
+    windows = app.config["PV_PREVIEW_WINDOWS"]
+    images_map, _ = app.config["PV_INDEX"].get()
+    for filename, info in images_map.items():
+        try:
+            generator.get_preview_path(filename, window=windows.get(info.modality))
+        except Exception as exc:  # keep the warm-up alive across individual failures
+            app.logger.warning("Preview warm-up failed for %r: %s", filename, exc)
 
 
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # the reloader watchdog would run create_app (and the preview warm-up)
+    # a second time in a separate process; disabled for a single instance
+    app.run(debug=True, port=5000, threaded=True, use_reloader=False)

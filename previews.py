@@ -100,16 +100,23 @@ class PreviewGenerator:
         image = Image.fromarray(self._to_uint8(data, window))
         image.thumbnail((PREVIEW_MAX_SIZE, PREVIEW_MAX_SIZE), Image.Resampling.LANCZOS)
         os.makedirs(self.previews_dir, exist_ok=True)
-        tmp_path = cache_path + ".tmp"
+        # per-process and per-thread temp name: two app instances sharing one
+        # previews dir (e.g. via a debug reloader watchdog) must not collide
+        tmp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
             image.save(tmp_path, format="JPEG", quality=PREVIEW_QUALITY)
-            os.replace(tmp_path, cache_path)
-        except BaseException:
+            try:
+                os.replace(tmp_path, cache_path)
+            except OSError:
+                # Windows: another process may hold the identical destination
+                # open briefly (e.g. while serving it); existing cache wins
+                if not os.path.isfile(cache_path):
+                    raise
+        finally:
             try:
                 os.remove(tmp_path)
             except OSError:
                 pass
-            raise
 
     def _read_source(self, source: str) -> np.ndarray:
         """Read the image data, using tifffile for TIFFs and Pillow otherwise."""
