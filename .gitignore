@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 .pytest-tmp/
+.devcontainer
 
 # Laufzeitdaten (nicht versionieren)
 data/labels.csv
