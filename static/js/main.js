@@ -5,6 +5,9 @@
   const labelKeys = [APP.goodKey, ...APP.defectKeys];
   // {card, checkboxes} pairs collected once at startup: the gallery is static
   let cardEntries = [];
+  // number of dirty cards, kept incrementally so save-button updates do not
+  // scan every card on each click (the gallery holds tens of thousands)
+  let dirtyCount = 0;
 
   function collectCheckboxes(card) {
     const checkboxes = {};
@@ -56,16 +59,19 @@
     applyCardState(entry, state);
   }
 
-  function refreshSaveButton() {
-    let count = 0;
-    for (const entry of cardEntries) {
-      if (cardIsDirty(entry)) {
-        count += 1;
-      }
+  // tracks one entry's dirty state against the incremental dirtyCount
+  function updateDirty(entry) {
+    const dirty = cardIsDirty(entry);
+    if (dirty !== entry.dirty) {
+      entry.dirty = dirty;
+      dirtyCount += dirty ? 1 : -1;
     }
+  }
+
+  function refreshSaveButton() {
     const button = document.getElementById("save-btn");
-    button.disabled = count === 0;
-    button.textContent = count ? `Save (${count})` : "Save";
+    button.disabled = dirtyCount === 0;
+    button.textContent = dirtyCount ? `Save (${dirtyCount})` : "Save";
   }
 
   async function saveChanges() {
@@ -422,15 +428,18 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    cardEntries = [...document.querySelectorAll(".card")].map((card) => ({
-      card: card,
-      checkboxes: collectCheckboxes(card),
-    }));
-    for (const entry of cardEntries) {
+    function makeEntry(card) {
+      return { card: card, checkboxes: collectCheckboxes(card), dirty: false };
+    }
+
+    // attaches the listeners every card needs; used for the initial batch
+    // and for batches appended by the infinite scroll
+    function wireCard(entry) {
       entry.card.addEventListener("change", (event) => {
         const checkbox = event.target;
         if (checkbox.classList.contains("label-checkbox")) {
           applyLocalChange(entry, checkbox.dataset.key, checkbox.checked);
+          updateDirty(entry);
           refreshSaveButton();
         }
       });
@@ -438,9 +447,69 @@
         button.addEventListener("click", () => openGroupModal(entry.card.dataset.filename));
       }
     }
+
+    cardEntries = [...document.querySelectorAll(".card")].map(makeEntry);
+    for (const entry of cardEntries) {
+      wireCard(entry);
+    }
     const empty = document.querySelector(".gallery .empty");
     if (empty) {
       empty.hidden = cardEntries.length > 0;
+    }
+
+    // infinite scroll: the sentinel marks the end of the rendered batch and
+    // fetches the next one when it scrolls into view
+    const sentinel = document.getElementById("gallery-sentinel");
+    if (sentinel) {
+      let loading = false;
+      const loadMore = async () => {
+        if (loading) {
+          return;
+        }
+        loading = true;
+        try {
+          const offset = Number(sentinel.dataset.offset);
+          const query = sentinel.dataset.query;
+          const response = await fetch(`${APP.cardsUrl}?${query}&offset=${offset}`);
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || "loading more cards failed");
+          }
+          const known = new Set(cardEntries.map((entry) => entry.card));
+          sentinel.insertAdjacentHTML("beforebegin", data.html);
+          for (const card of document.querySelectorAll(".card")) {
+            if (known.has(card)) {
+              continue;
+            }
+            const entry = makeEntry(card);
+            cardEntries.push(entry);
+            wireCard(entry);
+          }
+          sentinel.dataset.offset = String(offset + data.count);
+          if (data.remaining <= 0) {
+            sentinel.remove();
+          }
+        } catch (error) {
+          console.error(error);
+          sentinel.textContent = "Failed to load more cards — click to retry";
+        } finally {
+          loading = false;
+        }
+      };
+      sentinel.addEventListener("click", () => {
+        if (sentinel.textContent) {
+          sentinel.textContent = "";
+          loadMore();
+        }
+      });
+      new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) {
+            loadMore();
+          }
+        },
+        { rootMargin: "800px" }
+      ).observe(sentinel);
     }
     const modal = document.getElementById("group-modal");
     document.getElementById("save-btn").addEventListener("click", saveChanges);

@@ -193,7 +193,7 @@ Die Filterlogik bezieht sich ausschließlich auf den gespeicherten Labelstatus; 
 
 ### 6.4 Bildgalerie und Bildkarte
 
-Die Galerie zeigt alle Bilder, die dem gewählten Modalitäts- und Tab-Filter entsprechen.
+Die Galerie zeigt alle Bilder, die dem gewählten Modalitäts- und Tab-Filter entsprechen. Die Karten werden in Schüben geladen (Infinite Scroll): zunächst erscheinen die ersten 100 Karten, weitere werden automatisch nachgeladen, sobald ans Ende der Galerie gescrollt wird — bis alle Bilder der gewählten Ansicht erreichbar sind. Tab-Zählungen, Filter und Speichern beziehen sich weiterhin auf den vollständigen Bildbestand.
 
 Jede Bildkarte enthält:
 
@@ -428,3 +428,4 @@ Die Implementierung gilt als funktionsfähig, wenn alle folgenden Kriterien erf�
 20. Das `Preview-Window`-Panel stellt das Vorschau-Fenster der gewählten Modalität ein (Regler und Zahleneingabe) und schreibt Änderungen in die `config.json` zurück; das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt.
 21. Breite und Höhe des Bildgruppen-Pop-ups folgen den optionalen Config-Werten `modal_max_width` und `modal_max_height`.
 22. Die Tastenkombination `Strg+S` speichert alle ungespeicherten Änderungen wie ein Klick auf `Save`; ohne ungespeicherte Änderungen passiert nichts und die Seite lädt nicht neu.
+23. Die Galerie zeigt zunächst höchstens 100 Karten und lädt beim Scrollen ans Ende automatisch weitere nach, bis alle Bilder der gewählten Ansicht erreichbar sind.

@@ -87,28 +87,10 @@
   </nav>
 
   <main class="gallery">
-    {% for card in cards %}
-    <article class="card" data-filename="{{ card.filename }}">
-      <button type="button" class="card-image" title="Show image group">
-        <img src="{{ card.preview_url }}" alt="{{ card.filename }}" loading="lazy">
-      </button>
-      <button type="button" class="card-name" title="{{ card.filename }}">{{ card.name }}
-        {% if modality == 'all' %}<span class="card-modality">{{ card.modality_display }}</span>{% endif %}
-      </button>
-      <div class="labels">
-        <label class="label-check good">
-          <input type="checkbox" class="label-checkbox" data-key="{{ good_key }}"
-                 {% if card.good %}checked{% endif %}> {{ good_label }}
-        </label>
-        {% for defect in defects %}
-        <label class="label-check">
-          <input type="checkbox" class="label-checkbox" data-key="{{ defect.key }}"
-                 {% if card.defects[defect.key] %}checked{% endif %}> {{ defect.display_name }}
-        </label>
-        {% endfor %}
-      </div>
-    </article>
-    {% endfor %}
+    {% include "cards.html" %}
+    {% if cards|length < card_total %}
+    <div id="gallery-sentinel" data-offset="{{ cards|length }}" data-query="{{ query_string }}"></div>
+    {% endif %}
     <p class="empty" hidden>No images match the current filter.</p>
   </main>
 
@@ -128,6 +110,7 @@
       goodKey: {{ good_key|tojson }},
       defectKeys: {{ defect_keys|tojson }},
       saveUrl: {{ url_for('api_save')|tojson }},
+      cardsUrl: {{ url_for('api_cards')|tojson }},
       groupUrl: {{ url_for('api_group', filename='__FN__')|tojson }},
       originalUrl: {{ url_for('api_original', filename='__FN__')|tojson }},
       previewWindowUrl: {{ url_for('api_preview_window')|tojson }}

@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 import tifffile
 
+import app as app_module
 from app import _validate_config, create_app
 
 CONFIG = {
@@ -136,6 +137,44 @@ def test_explicit_images_dir_wins_over_config(tmp_path):
         previews_dir=str(tmp_path / "previews"),
     )
     assert app.config["PV_IMAGES_DIR"] == str(explicit)
+
+
+def test_gallery_batching_and_api_cards(monkeypatch, tmp_path):
+    """/main renders only the first batch; /api/cards serves the rest."""
+    monkeypatch.setattr(app_module, "GALLERY_BATCH", 3)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for i in range(1, 6):
+        tifffile.imwrite(
+            str(images_dir / f"23-P09-B1_VI_Cell{i:03d}.tif"), np.zeros((32, 32), dtype=np.uint8)
+        )
+    app = create_app(
+        config=CONFIG,
+        images_dir=str(images_dir),
+        labels_csv=str(tmp_path / "labels.csv"),
+        change_log=str(tmp_path / "change_log.txt"),
+        previews_dir=str(tmp_path / "previews"),
+    )
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        client.post("/login", data={"name": "Max"})
+        page = client.get("/main?modality=all&tab=unclassified")
+        assert page.data.count(b'class="card"') == 3
+        assert b'id="gallery-sentinel"' in page.data
+        assert b'data-offset="3"' in page.data
+        res = client.get("/api/cards?modality=all&tab=unclassified&offset=3")
+        data = res.get_json()
+        assert data["ok"]
+        assert data["count"] == 2
+        assert data["remaining"] == 0
+        assert data["html"].count('class="card"') == 2
+        # past the end there is nothing left
+        assert (
+            client.get("/api/cards?modality=all&tab=unclassified&offset=5").get_json()["count"] == 0
+        )
+        # auth and argument validation
+        assert app.test_client().get("/api/cards").status_code == 401
+        assert client.get("/api/cards?offset=abc").status_code == 400
 
 
 def test_save_api_and_good_exclusivity(client):

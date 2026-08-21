@@ -29,8 +29,7 @@ def sample_script():
     return load_sample_script()
 
 
-@pytest.fixture
-def live_server(tmp_path, sample_script):
+def _bootstrap(tmp_path, sample_script):
     """Start the app on a random port with freshly generated sample images."""
     from app import create_app, load_config
 
@@ -59,15 +58,36 @@ def live_server(tmp_path, sample_script):
     except Exception:
         server.shutdown()
         raise
-    yield {
+    return {
+        "server": server,
+        "thread": thread,
         "base_url": base_url,
         "labels_csv": data_dir / "labels.csv",
         "change_log": data_dir / "change_log.txt",
         "config_path": data_dir / "config.json",
         "ground_truth_csv": data_dir / "ground_truth.csv",
     }
-    server.shutdown()
-    thread.join(timeout=5)
+
+
+@pytest.fixture
+def live_server(tmp_path, sample_script):
+    """Start the app on a random port with freshly generated sample images."""
+    info = _bootstrap(tmp_path, sample_script)
+    yield info
+    info["server"].shutdown()
+    info["thread"].join(timeout=5)
+
+
+@pytest.fixture
+def scrolling_live_server(tmp_path, sample_script, monkeypatch):
+    """live_server with a small card batch so infinite scrolling is exercised."""
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "GALLERY_BATCH", 12)
+    info = _bootstrap(tmp_path, sample_script)
+    yield info
+    info["server"].shutdown()
+    info["thread"].join(timeout=5)
 
 
 def _wait_until_ready(base_url, timeout=15):

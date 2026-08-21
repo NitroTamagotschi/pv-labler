@@ -338,6 +338,14 @@ body {
   padding: 20px;
 }
 
+#gallery-sentinel {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 16px;
+  color: #64748b;
+  cursor: pointer;
+}
+
 .card {
   background: #fff;
   border: 1px solid #d8dbe0;
@@ -346,6 +354,10 @@ body {
   display: flex;
   flex-direction: column;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  /* with tens of thousands of cards the grid layout and paint would block
+     the browser's main thread; off-screen cards skip rendering entirely */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 460px;
 }
 
 .card:hover {

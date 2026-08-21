@@ -1,5 +1,6 @@
 """Tests for the TIFF-to-JPEG preview generation (previews.py)."""
 
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -136,6 +137,37 @@ def test_rejects_traversal_and_non_image(generator):
         gen.get_preview_path("/abs/23-P09-B1_EL_Cell001.tif")
     with pytest.raises(ValueError):
         gen.get_preview_path("x.bmp")
+
+
+def test_concurrent_generation_uses_striped_locks(generator):
+    """Concurrent requests for different and identical images all succeed."""
+    images_dir, gen = generator
+    names = [f"23-P09-B1_VI_Cell{i:03d}.tif" for i in range(1, 9)]
+    for name in names:
+        _write_tiff(images_dir, name, np.zeros((128, 128), dtype=np.uint8))
+    # each name is requested four times across threads to exercise both
+    # parallel generation of different images and lock sharing
+    requests = names * 4
+    paths = {}
+    errors = []
+
+    def request(name):
+        try:
+            paths[name] = gen.get_preview_path(name)
+        except Exception as exc:  # collected and asserted below
+            errors.append((name, exc))
+
+    threads = [threading.Thread(target=request, args=(name,)) for name in requests]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors
+    previews_dir = Path(next(iter(paths.values()))).parent
+    for name in names:
+        assert Path(paths[name]).is_file(), name
+    assert not list(previews_dir.glob("*.tmp"))  # no temp files left behind
 
 
 def test_missing_file_raises(generator):

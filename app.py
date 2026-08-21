@@ -42,6 +42,9 @@ MODALITY_CODE_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
 # tab keys that are not labels; they can never be configured as label keys
 RESERVED_TAB_KEYS = ("unclassified", "all")
 
+# cards rendered per gallery view; the rest loads on demand while scrolling
+GALLERY_BATCH = 100
+
 
 def load_config(path: str = CONFIG_PATH) -> dict:
     """Load and validate config.json (specification §3.3)."""
@@ -199,69 +202,62 @@ def create_app(
         session.clear()
         return redirect(url_for("index"))
 
-    @app.route("/main")
-    def main() -> Response | str:
-        """Render the main window: gallery, tabs and filters for the session."""
-        if "name" not in session:
-            return redirect(url_for("index"))
+    def view_params() -> dict:
+        """Resolve the modality/tab/cell-type filters shared by main and cards."""
         cfg = app.config["PV_CONFIG"]
         modality_codes = [m["code"] for m in cfg["modalities"]]
-        good_key = cfg["labels"]["good"]["key"]
-        defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
-        label_keys = [good_key] + defect_keys
-        valid_tabs = [RESERVED_TAB_KEYS[0], *label_keys, RESERVED_TAB_KEYS[1]]
-
         modality = request.args.get("modality", modality_codes[0])
         if modality != "all" and modality not in modality_codes:
             modality = modality_codes[0]
         tab = request.args.get("tab", "unclassified")
+        valid_tabs = [
+            RESERVED_TAB_KEYS[0],
+            cfg["labels"]["good"]["key"],
+            *[d["key"] for d in cfg["labels"]["defects"]],
+            RESERVED_TAB_KEYS[1],
+        ]
         if tab not in valid_tabs:
             tab = "unclassified"
-
         all_images, _ = app.config["PV_INDEX"].get()
         states = app.config["PV_STORE"].get_states()
-
         all_types = sorted({info.cell_type for info in all_images.values()})
         selected_types = [t for t in request.args.getlist("cell_type") if t in all_types]
         if len(selected_types) == len(all_types):
             selected_types = []  # all selected == no filter
-        # image count per cell type in the selected modality (for the panel)
-        type_counts = {t: 0 for t in all_types}
+        return {
+            "cfg": cfg,
+            "modality": modality,
+            "tab": tab,
+            "all_images": all_images,
+            "states": states,
+            "all_types": all_types,
+            "selected_types": selected_types,
+        }
 
-        counts = {t: 0 for t in valid_tabs}
-        cards = []
+    def build_cards(view: dict) -> list[dict]:
+        """Return the card dicts matching the view's modality/tab filters."""
+        cfg = view["cfg"]
+        modality = view["modality"]
+        good_key = cfg["labels"]["good"]["key"]
+        defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
         modality_displays = {m["code"]: m["display_name"] for m in cfg["modalities"]}
-        # preview-window info: slider range (probed from the first image of the
-        # selected modality) and a per-window cache-busting signature for URLs
-        preview_range = 255.0
-        if modality != "all":
-            for info in all_images.values():
-                if info.modality == modality:
-                    preview_range = previews.probe_data_range(
-                        os.path.join(app.config["PV_IMAGES_DIR"], info.filename)
-                    )
-                    break
         window_sig = {
             m["code"]: hashlib.md5(
                 repr(app.config["PV_PREVIEW_WINDOWS"].get(m["code"])).encode()
             ).hexdigest()[:8]
             for m in cfg["modalities"]
         }
-        for filename, info in all_images.items():
+        cards = []
+        for filename, info in view["all_images"].items():
             if modality != "all" and info.modality != modality:
                 continue
-            type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
-            if selected_types and info.cell_type not in selected_types:
+            if view["selected_types"] and info.cell_type not in view["selected_types"]:
                 continue
-            state = states.get(filename, {})
+            state = view["states"].get(filename, {})
             is_unclassified = not state.get(good_key, 0) and not any(
                 state.get(k, 0) for k in defect_keys
             )
-            # one predicate drives both the tab counts and the card filter
-            for t in valid_tabs:
-                if _matches_tab(state, t, is_unclassified):
-                    counts[t] += 1
-            if not _matches_tab(state, tab, is_unclassified):
+            if not _matches_tab(state, view["tab"], is_unclassified):
                 continue
             cards.append(
                 {
@@ -273,6 +269,43 @@ def create_app(
                     "preview_url": url_for("preview", file=filename, v=window_sig[info.modality]),
                 }
             )
+        return cards
+
+    @app.route("/main")
+    def main() -> Response | str:
+        """Render the main window: gallery, tabs and filters for the session."""
+        if "name" not in session:
+            return redirect(url_for("index"))
+        view = view_params()
+        cfg = view["cfg"]
+        modality = view["modality"]
+        tab = view["tab"]
+        good_key = cfg["labels"]["good"]["key"]
+        defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
+        label_keys = [good_key] + defect_keys
+        valid_tabs = [RESERVED_TAB_KEYS[0], *label_keys, RESERVED_TAB_KEYS[1]]
+
+        counts = {t: 0 for t in valid_tabs}
+        # image count per cell type in the selected modality (for the panel)
+        type_counts = {t: 0 for t in view["all_types"]}
+        for filename, info in view["all_images"].items():
+            if modality != "all" and info.modality != modality:
+                continue
+            type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
+            if view["selected_types"] and info.cell_type not in view["selected_types"]:
+                continue
+            state = view["states"].get(filename, {})
+            is_unclassified = not state.get(good_key, 0) and not any(
+                state.get(k, 0) for k in defect_keys
+            )
+            # one predicate drives the tab counts; the cards themselves are
+            # built separately so /api/cards can reuse the same filtering
+            for t in valid_tabs:
+                if _matches_tab(state, t, is_unclassified):
+                    counts[t] += 1
+
+        cards = build_cards(view)
+        batch = cards[:GALLERY_BATCH]
 
         tabs = [
             {"key": "unclassified", "label": "Unclassified", "count": counts["unclassified"]},
@@ -287,6 +320,7 @@ def create_app(
             for d in cfg["labels"]["defects"]
         )
         tabs.append({"key": "all", "label": "All", "count": counts["all"]})
+        selected_types = view["selected_types"]
         if not selected_types:
             cell_type_label = "All"
         elif len(selected_types) == 1:
@@ -297,6 +331,16 @@ def create_app(
         modal_height = cfg.get("modal_max_height", "90vh")
         modal_max_height = f"{modal_height}px" if isinstance(modal_height, int) else modal_height
 
+        # preview-window info: slider range (probed from the first image of the
+        # selected modality)
+        preview_range = 255.0
+        if modality != "all":
+            for info in view["all_images"].values():
+                if info.modality == modality:
+                    preview_range = previews.probe_data_range(
+                        os.path.join(app.config["PV_IMAGES_DIR"], info.filename)
+                    )
+                    break
         preview_window = app.config["PV_PREVIEW_WINDOWS"].get(modality)
         preview_window_min = preview_window[0] if preview_window else 0
         preview_window_max = preview_window[1] if preview_window else preview_range
@@ -317,10 +361,12 @@ def create_app(
             modality=modality,
             tab=tab,
             tabs=tabs,
-            cards=cards,
+            cards=batch,
+            card_total=len(cards),
+            query_string=request.query_string.decode(),
             selected_types=selected_types,
             cell_type_label=cell_type_label,
-            cell_types=[{"value": t, "count": type_counts[t]} for t in all_types],
+            cell_types=[{"value": t, "count": type_counts[t]} for t in view["all_types"]],
             good_key=good_key,
             good_label=cfg["labels"]["good"]["display_name"],
             defects=cfg["labels"]["defects"],
@@ -332,6 +378,34 @@ def create_app(
             preview_window_max=preview_window_max,
             preview_range=preview_range,
             preview_bits=preview_bits,
+        )
+
+    @app.route("/api/cards")
+    def api_cards() -> Response:
+        """Return the next batch of gallery cards as HTML (infinite scroll)."""
+        if "name" not in session:
+            return jsonify(ok=False, error="Not logged in"), 401
+        view = view_params()
+        try:
+            offset = max(0, int(request.args.get("offset", 0)))
+            limit = min(GALLERY_BATCH, max(1, int(request.args.get("limit", GALLERY_BATCH))))
+        except ValueError:
+            return jsonify(ok=False, error="offset and limit must be integers"), 400
+        cards = build_cards(view)
+        batch = cards[offset : offset + limit]
+        html = render_template(
+            "cards.html",
+            cards=batch,
+            modality=view["modality"],
+            good_key=view["cfg"]["labels"]["good"]["key"],
+            good_label=view["cfg"]["labels"]["good"]["display_name"],
+            defects=view["cfg"]["labels"]["defects"],
+        )
+        return jsonify(
+            ok=True,
+            html=html,
+            count=len(batch),
+            remaining=max(0, len(cards) - offset - len(batch)),
         )
 
     @app.route("/api/save", methods=["POST"])
@@ -406,7 +480,10 @@ def create_app(
             abort(401)
         filename = request.args.get("file", "")
         generator = app.config["PV_PREVIEWS"]
-        info = app.config["PV_INDEX"].get()[0].get(filename)
+        # the modality is parsed from the filename instead of consulting the
+        # index: the index walks the whole image tree, which is far too slow
+        # to repeat for every preview request of a large image set
+        info = images.parse_filename(filename, app.config["PV_INDEX"].filename_codes)
         window = app.config["PV_PREVIEW_WINDOWS"].get(info.modality) if info is not None else None
         try:
             cache_path = generator.get_preview_path(filename, window=window)
@@ -489,4 +566,6 @@ def create_app(
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # threaded so that concurrent preview requests generate in parallel
+    # instead of serializing behind one request
+    app.run(debug=True, port=5000, threaded=True)

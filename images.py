@@ -176,21 +176,23 @@ class ImageIndex:
         self._signature = None
 
     def _dir_signature(self) -> tuple[int, int] | None:
-        """Return the recursive file count plus the newest file mtime.
+        """Return the recursive file count plus the newest directory mtime.
 
         Both are computed over the whole tree so that images appearing in
-        subfolders invalidate the cache. The count guards against filesystems
-        with coarse timestamp resolution, where a freshly added file may not
-        change any directory mtime yet.
+        subfolders invalidate the cache. Only directories are stat'ed: the
+        index depends on filenames, and adding/removing/renaming files
+        updates their directory's mtime — with a large image set this keeps
+        the check cheap enough to run on every request. The count guards
+        against filesystems with coarse timestamp resolution, where a
+        freshly added file may not change any directory mtime yet.
         """
         try:
             count = 0
             newest = 0
             for root, dirnames, filenames in os.walk(self.images_dir):
                 dirnames.sort()
-                for name in filenames:
-                    count += 1
-                    newest = max(newest, os.stat(os.path.join(root, name)).st_mtime_ns)
+                count += len(filenames)
+                newest = max(newest, os.stat(root).st_mtime_ns)
             return (count, newest)
         except OSError:
             return None
