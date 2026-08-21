@@ -171,6 +171,12 @@ def test_modal_original_view_with_window_controls(login, live_server):
         }"""
     )
     assert max_pixel == 255
+    # the sliders span the native range, so the raw 1:1 mapping is reachable
+    sliders = figure.locator(".modal-window-controls input[type=range]")
+    expect(sliders.nth(0)).to_have_attribute("min", "0")
+    expect(sliders.nth(0)).to_have_attribute("max", "255")
+    sliders.nth(0).evaluate("el => { el.value = '0'; el.dispatchEvent(new Event('input')); }")
+    expect(figure.locator(".modal-window-value").first).to_have_text("0")
     # switch back to the preview on demand
     figure.locator(".modal-image-controls button").click()
     expect(canvas).to_have_count(0)

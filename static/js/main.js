@@ -225,8 +225,12 @@
     }
 
     function buildControls() {
-      const step = Math.max(1, Math.round((dataMax - dataMin) / 1000));
       const formatValue = (value) => String(Math.round(value * 100) / 100);
+      // the sliders span the image's native value range (0..255, 0..65535
+      // or 0..1); the start values stay the full data range so the display
+      // begins with maximal contrast and can be widened to the raw mapping
+      const nativeMax =
+        rawData instanceof Float32Array ? 1 : 2 ** (rawData.BYTES_PER_ELEMENT * 8) - 1;
       const makeSlider = (labelText, value) => {
         const label = document.createElement("label");
         label.className = "modal-window-label";
@@ -237,9 +241,10 @@
         label.append(" ", valueSpan);
         const slider = document.createElement("input");
         slider.type = "range";
-        slider.min = String(dataMin);
-        slider.max = String(dataMax);
-        slider.step = String(step);
+        slider.min = "0";
+        slider.max = String(nativeMax);
+        // "any" keeps programmatic values exact (no step-grid snapping)
+        slider.step = "any";
         slider.value = String(value);
         return { label, slider, valueSpan };
       };
