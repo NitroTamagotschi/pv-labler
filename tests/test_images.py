@@ -2,7 +2,13 @@
 
 import pytest
 
-from images import ImageIndex, modality_filename_codes, parse_filename, scan_images
+from images import (
+    ImageIndex,
+    filename_matches_search,
+    modality_filename_codes,
+    parse_filename,
+    scan_images,
+)
 
 MODALITIES = [
     {"code": "VI", "display_name": "VI", "filename_code": "VI"},
@@ -184,3 +190,80 @@ def test_real_world_filenames(filename, expected):
     info = parse_filename(filename, CODES)
     assert info is not None
     assert (info.cell_type, info.modality, info.cell_id, info.variant) == expected
+
+
+# --- search matching (filename_matches_search) --------------------------------
+
+FILE = "C14-A/EL/C14_A6_EL_Cell045_normalized.tif"
+
+
+def test_search_empty_pattern_matches_everything():
+    assert filename_matches_search(FILE, "")
+    assert filename_matches_search("whatever.tif", "")
+
+
+def test_search_plain_substring():
+    assert filename_matches_search(FILE, "Cell045")
+    assert filename_matches_search(FILE, "normalized")
+    assert not filename_matches_search(FILE, "Cell999")
+
+
+def test_search_substring_matches_folder_part():
+    assert filename_matches_search(FILE, "C14-A/EL")
+    assert filename_matches_search(FILE, "EL/")
+
+
+def test_search_case_insensitive():
+    assert filename_matches_search("TEST_23_089_A1_EL_LR_Cell001.jpg", "cell001")
+    assert filename_matches_search("TEST_23_089_A1_EL_LR_Cell001.jpg", "el_lr")
+
+
+def test_search_implicit_trailing_star():
+    assert filename_matches_search(FILE, "C14_A6*Cell045")
+    assert not filename_matches_search(
+        "L_C14-B/EL/C14_B6_EL_Cell045_normalized.tif", "C14_A6*Cell045"
+    )
+
+
+def test_search_glob_anchored_at_start():
+    assert not filename_matches_search("A14_C14_A6_EL_Cell045.tif", "C14_A6*Cell045")
+    assert filename_matches_search("A14_C14_A6_EL_Cell045.tif", "*C14_A6*Cell045")
+
+
+def test_search_folder_via_full_path():
+    assert filename_matches_search(FILE, "C14-A/*")
+    assert not filename_matches_search("L_C14-B/EL/C14_B6_EL_Cell046.tif", "C14-A/*")
+
+
+def test_search_star_crosses_slash():
+    assert filename_matches_search(FILE, "C14-A*Cell045")
+
+
+def test_search_question_mark():
+    assert filename_matches_search(FILE, "C14_A6_EL_Cell04?")
+    assert not filename_matches_search(FILE, "C14_A6_EL_Cell9?")
+
+
+def test_search_character_class():
+    assert filename_matches_search(FILE, "*Cell0[0-9]*")
+    assert not filename_matches_search(FILE, "*Cell0[X]*")
+
+
+def test_search_special_chars_are_safe():
+    assert not filename_matches_search(FILE, "[")
+    assert not filename_matches_search(FILE, "*]")
+    assert filename_matches_search(FILE, "*")
+
+
+def test_search_basename_vs_folder_disambiguation():
+    a = "a/23-P09-B1_EL_Cell001.tif"
+    b = "b/23-P09-B1_EL_Cell001.tif"
+    assert filename_matches_search(a, "23-P09*")
+    assert filename_matches_search(b, "23-P09*")
+    assert filename_matches_search(a, "a/23-P09*")
+    assert not filename_matches_search(b, "a/23-P09*")
+
+
+def test_search_long_pattern():
+    assert filename_matches_search(FILE, "*" * 100 + "Cell045")
+    assert not filename_matches_search(FILE, "*" * 100 + "Cell046")

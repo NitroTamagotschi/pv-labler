@@ -19,6 +19,21 @@
       </select>
       <input type="hidden" name="tab" value="{{ tab }}">
       {% for t in selected_types %}<input type="hidden" name="cell_type" value="{{ t }}">{% endfor %}
+      <input type="hidden" name="q" value="{{ search }}">
+    </form>
+    <form method="get" action="{{ url_for('main') }}" class="search-form" role="search">
+      <input type="search" name="q" value="{{ search }}"
+             placeholder="Suche: C14_A6*Cell045"
+             title="* = beliebige Zeichenfolge, ? = genau ein Zeichen"
+             aria-label="Suche">
+      <input type="hidden" name="modality" value="{{ modality }}">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      {% for t in selected_types %}<input type="hidden" name="cell_type" value="{{ t }}">{% endfor %}
+      <button type="submit" class="apply-btn">Suchen</button>
+      {% if search %}
+      <a class="search-clear" href="{{ clear_href }}" title="Suche zurücksetzen"
+         aria-label="Suche zurücksetzen">✕</a>
+      {% endif %}
     </form>
     <div class="type-filter">
       <button type="button" class="type-filter-trigger" id="type-filter-trigger">
@@ -39,6 +54,7 @@
         {% endfor %}
         <input type="hidden" name="modality" value="{{ modality }}">
         <input type="hidden" name="tab" value="{{ tab }}">
+        <input type="hidden" name="q" value="{{ search }}">
       </form>
     </div>
     <div class="window-filter">
@@ -79,8 +95,7 @@
 
   <nav class="tabs">
     {% for t in tabs %}
-      <a class="tab {% if t.key == tab %}active{% endif %}"
-         href="{{ url_for('main', modality=modality, tab=t.key, cell_type=selected_types) }}">
+      <a class="tab {% if t.key == tab %}active{% endif %}" href="{{ t.href }}">
         {{ t.label }} <span class="count">{{ t.count }}</span>
       </a>
     {% endfor %}

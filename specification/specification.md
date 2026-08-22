@@ -159,6 +159,7 @@ Das Main Window enthält die folgenden Bereiche:
 5. `Save`-Button oben rechts zum Speichern aller ungespeicherten Änderungen.
 6. `Cell type`-Filter-Panel zur Filterung auf einzelne Solarzellentypen.
 7. `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters der gewählten Modalität (schreibt in die `config.json`, siehe 3.3).
+8. Suchfeld zur Filterung der Galerie nach Dateinamen (siehe 6.4).
 
 ### 6.2 Dropdown: Bildmodalität
 
@@ -194,6 +195,16 @@ Die Filterlogik bezieht sich ausschließlich auf den gespeicherten Labelstatus; 
 ### 6.4 Bildgalerie und Bildkarte
 
 Die Galerie zeigt alle Bilder, die dem gewählten Modalitäts- und Tab-Filter entsprechen. Die Karten werden in Schüben geladen (Infinite Scroll): zunächst erscheinen die ersten 100 Karten, weitere werden automatisch nachgeladen, sobald ans Ende der Galerie gescrollt wird — bis alle Bilder der gewählten Ansicht erreichbar sind. Tab-Zählungen, Filter und Speichern beziehen sich weiterhin auf den vollständigen Bildbestand.
+
+**Suchfeld:**
+
+Das Suchfeld in der Kopfzeile filtert die Galerie nach Dateinamen (Eingabe bestätigen mit `Enter` oder `Suchen`; der ✕-Link entfernt nur die Suche). Die Suche kombiniert sich mit Modalitäts-, Tab- und Zelltyp-Filter; Tab-Zählungen und die Zählungen des `Cell type`-Panels beziehen sich auf die gefilterte Menge. Die Suche bleibt beim Wechsel der anderen Filter und nach dem Speichern erhalten.
+
+- Groß-/Kleinschreibung wird ignoriert.
+- Enthält das Muster keine Wildcards, gilt es als Teiltextsuche über den relativen Dateipfad (z. B. findet `Cell045` auch `C14-A/EL/C14_A6_EL_Cell045_normalized.tif`).
+- Enthält das Muster Wildcards, gilt es als Glob-Muster mit implizit angehängtem `*`: `*` steht für beliebig viele Zeichen (auch `/`), `?` für genau ein Zeichen, `[abc]`/`[!abc]` für Zeichenklassen. Geprüft werden Dateiname und relativer Pfad, sodass auch Ordner gesucht werden können (z. B. `C14-A/*`).
+- Beispiel: `C14_A6*Cell045` findet `C14-A/EL/C14_A6_EL_Cell045_normalized.tif`.
+- Längere Muster als 200 Zeichen werden gekürzt.
 
 Jede Bildkarte enthält:
 
@@ -233,7 +244,7 @@ Falls eine Modalität einer Bildgruppe nicht vorhanden ist, muss dies sichtbar a
 - Checkbox-Klicks ändern zunächst nur die Anzeige; gespeichert wird ausschließlich über den `Save`-Button oder die Tastenkombination `Strg+S`.
 - Der `Save`-Button befindet sich oben rechts in der Kopfzeile neben dem Anmeldebereich und zeigt die Anzahl der geänderten Bilder an; ohne ungespeicherte Änderungen ist er deaktiviert.
 - `Strg+S` löst dasselbe Speichern aus wie ein Klick auf `Save` (inklusive Neu-Laden nach Erfolg und dem Bestätigungsdialog bei Fehlern); ohne ungespeicherte Änderungen passiert nichts. Der native „Seite speichern“-Dialog des Browsers wird dabei unterdrückt.
-- Beim Klick auf `Save` werden alle ungespeicherten Änderungen in `labels.csv` und im Änderungslog persistiert. Danach wird die Ansicht neu geladen; Bilder, die nicht mehr zum aktuellen Tab-Filter passen, verschwinden aus der Galerie. Tab-Filter, Modalität und Zelltyp-Filter bleiben dabei erhalten.
+- Beim Klick auf `Save` werden alle ungespeicherten Änderungen in `labels.csv` und im Änderungslog persistiert. Danach wird die Ansicht neu geladen; Bilder, die nicht mehr zum aktuellen Tab-Filter passen, verschwinden aus der Galerie. Tab-Filter, Modalität, Zelltyp-Filter und Suche bleiben dabei erhalten.
 - Solange ungespeicherte Änderungen vorliegen, fragt der Browser beim Verlassen der Seite (Tab-Wechsel, Modalitätswechsel, Logout, Schließen oder Aktualisieren der Seite) über einen Bestätigungsdialog nach. Nicht gespeicherte Änderungen gehen beim Verlassen verloren.
 - Die Tab-Zählungen aktualisieren sich erst nach dem Speichern.
 

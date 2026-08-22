@@ -47,6 +47,9 @@ RESERVED_TAB_KEYS = ("unclassified", "all")
 # cards rendered per gallery view; the rest loads on demand while scrolling
 GALLERY_BATCH = 100
 
+# search patterns longer than this are truncated (they cannot match anyway)
+MAX_SEARCH_LEN = 200
+
 
 def load_config(path: str = CONFIG_PATH) -> dict:
     """Load and validate config.json (specification §3.3)."""
@@ -223,6 +226,7 @@ def create_app(
         selected_types = [t for t in request.args.getlist("cell_type") if t in all_types]
         if len(selected_types) == len(all_types):
             selected_types = []  # all selected == no filter
+        search = (request.args.get("q") or "").strip()[:MAX_SEARCH_LEN]
         return {
             "cfg": cfg,
             "modality": modality,
@@ -234,6 +238,7 @@ def create_app(
             "states": states,
             "all_types": all_types,
             "selected_types": selected_types,
+            "search": search,
             "modality_displays": {m["code"]: m["display_name"] for m in cfg["modalities"]},
             # preview URL version string: config window changes bust the cache
             "window_sig": {
@@ -247,7 +252,7 @@ def create_app(
     def filtered_images(
         view: dict,
     ) -> Iterator[tuple[str, images.ImageInfo, dict, bool]]:
-        """Yield the images passing the view's modality and cell-type filters.
+        """Yield the images passing the view's modality, cell-type and search filters.
 
         Yields (filename, info, state, is_unclassified) tuples. The single
         filter predicate shared by the /main tab counts and the /api/cards
@@ -257,6 +262,8 @@ def create_app(
             if view["modality"] != "all" and info.modality != view["modality"]:
                 continue
             if view["selected_types"] and info.cell_type not in view["selected_types"]:
+                continue
+            if view["search"] and not images.filename_matches_search(filename, view["search"]):
                 continue
             state = view["states"].get(filename, {})
             is_unclassified = not state.get(view["good_key"], 0) and not any(
@@ -287,12 +294,16 @@ def create_app(
         good_key = view["good_key"]
         defect_keys = view["defect_keys"]
         valid_tabs = view["valid_tabs"]
+        selected_types = view["selected_types"]
 
         # image count per cell type in the selected modality (for the panel);
-        # independent of the type selection so every type keeps its count
+        # respects the search but not the type selection, so every type keeps
+        # its count while the selection changes
         type_counts = {t: 0 for t in view["all_types"]}
         for info in view["all_images"].values():
             if modality != "all" and info.modality != modality:
+                continue
+            if view["search"] and not images.filename_matches_search(info.filename, view["search"]):
                 continue
             type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
 
@@ -311,20 +322,43 @@ def create_app(
                 if len(cards) < GALLERY_BATCH:
                     cards.append(card_data(view, filename, info, state))
 
+        def view_href(tab_key: str, include_q: bool = True) -> str:
+            """Build the /main URL for one tab with all resolved filters.
+
+            Shared by the tab links and the search-clear link (which drops q);
+            an empty search never appears as a bare "q=" in the URL.
+            """
+            query = {"modality": modality, "tab": tab_key, "cell_type": selected_types}
+            if include_q and view["search"]:
+                query["q"] = view["search"]
+            return f"{url_for('main')}?{urlencode(query, doseq=True)}"
+
         tabs = [
-            {"key": "unclassified", "label": "Unclassified", "count": counts["unclassified"]},
+            {
+                "key": "unclassified",
+                "label": "Unclassified",
+                "count": counts["unclassified"],
+                "href": view_href("unclassified"),
+            },
             {
                 "key": good_key,
                 "label": cfg["labels"]["good"]["display_name"],
                 "count": counts[good_key],
+                "href": view_href(good_key),
             },
         ]
         tabs.extend(
-            {"key": d["key"], "label": d["display_name"], "count": counts[d["key"]]}
+            {
+                "key": d["key"],
+                "label": d["display_name"],
+                "count": counts[d["key"]],
+                "href": view_href(d["key"]),
+            }
             for d in cfg["labels"]["defects"]
         )
-        tabs.append({"key": "all", "label": "All", "count": counts["all"]})
-        selected_types = view["selected_types"]
+        tabs.append(
+            {"key": "all", "label": "All", "count": counts["all"], "href": view_href("all")}
+        )
         if not selected_types:
             cell_type_label = "All"
         elif len(selected_types) == 1:
@@ -371,9 +405,17 @@ def create_app(
             # stray offset=... in the browser URL can never leak into the
             # pagination and repeat batches (see main.js)
             sentinel_query=urlencode(
-                {"modality": modality, "tab": tab, "cell_type": selected_types}, doseq=True
+                {
+                    "modality": modality,
+                    "tab": tab,
+                    "cell_type": selected_types,
+                    **({"q": view["search"]} if view["search"] else {}),
+                },
+                doseq=True,
             ),
             selected_types=selected_types,
+            search=view["search"],
+            clear_href=view_href(tab, include_q=False),
             cell_type_label=cell_type_label,
             cell_types=[{"value": t, "count": type_counts[t]} for t in view["all_types"]],
             good_key=good_key,
