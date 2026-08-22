@@ -112,6 +112,21 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 
 ## Entwicklung
 
+### Labeldaten konvertieren (`approved_OLLM…` → `labels.csv`)
+
+`scripts/convert_approved_labels.py` übernimmt Labeldaten aus einem OLLM-Export (Spalten `filename,labels`, Labels leerzeichengetrennt, z. B. `dark discoloration`) in das `labels.csv`-Schema:
+
+```bash
+uv run python scripts/convert_approved_labels.py [approved.csv] --labeler "Max Muster"
+```
+
+- **`--labeler`** – Pflichtargument, wird in die Spalte `Name of labeler` geschrieben.
+- **Bildpfad-Auflösung**: Für jede Zeile wird das Bilder-Verzeichnis (Config-Eintrag `images_dir`, Standard `data/images/`, per `--images-dir` übersteuerbar) rekursiv durchsucht und der tatsächliche relative Pfad des Bildes als `datename` übernommen — die Labels passen damit immer zu dem, was die App anzeigt. Ein im Export enthaltener Ordnerpfad zählt nur, wenn er exakt existiert.
+- **Modalität**: Das Modalitätssegment im Dateinamen (`_VI_`/`_EL_`/`_UV_`) füllt die Spalten `uv`/`vi`/`el`; Mehrfachzeilen für dasselbe Bild werden gemerged (Vereinigung der Labels).
+- **Ausgaben**: Der Default-Zielpfad ist `<name>_converted.csv` neben der Quelldatei — `data/labels.csv` wird nur angefasst, wenn `--output` explizit darauf zeigt. Bestehende Zeilen des Ziels werden per `datename` aktualisiert, andere bleiben unangetastet.
+- **Fehler-Report**: Einträge, die nicht korrekt verarbeitet werden können (Bild fehlt oder Pfad mehrdeutig, Label nicht in `config.json` definiert, Modalität fehlt im Dateinamen, Labels leer), landen in `<output stem>_failed.csv` (Spalten `filename,labels,reason`) und werden zusätzlich auf der Konsole ausgegeben; der Exit-Code ist dann `1`.
+- `--dry-run` zeigt Zeilen und Report an, ohne zu schreiben.
+
 ### Tests (pytest)
 
 Die UI-Tests sind mit `@pytest.mark.ui` markiert und standardmäßig ausgeschlossen (siehe `[tool.pytest.ini_options]` in `pyproject.toml`):
