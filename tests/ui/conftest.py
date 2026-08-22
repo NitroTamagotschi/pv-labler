@@ -69,13 +69,18 @@ def _bootstrap(tmp_path, sample_script):
     }
 
 
+def _shutdown(info):
+    """Stop the server started by _bootstrap and join its thread."""
+    info["server"].shutdown()
+    info["thread"].join(timeout=5)
+
+
 @pytest.fixture
 def live_server(tmp_path, sample_script):
     """Start the app on a random port with freshly generated sample images."""
     info = _bootstrap(tmp_path, sample_script)
     yield info
-    info["server"].shutdown()
-    info["thread"].join(timeout=5)
+    _shutdown(info)
 
 
 @pytest.fixture
@@ -86,8 +91,7 @@ def scrolling_live_server(tmp_path, sample_script, monkeypatch):
     monkeypatch.setattr(app_module, "GALLERY_BATCH", 12)
     info = _bootstrap(tmp_path, sample_script)
     yield info
-    info["server"].shutdown()
-    info["thread"].join(timeout=5)
+    _shutdown(info)
 
 
 def _wait_until_ready(base_url, timeout=15):

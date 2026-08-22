@@ -10,6 +10,8 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Iterator
+from urllib.parse import urlencode
 
 from flask import (
     Flask,
@@ -210,12 +212,9 @@ def create_app(
         if modality != "all" and modality not in modality_codes:
             modality = modality_codes[0]
         tab = request.args.get("tab", "unclassified")
-        valid_tabs = [
-            RESERVED_TAB_KEYS[0],
-            cfg["labels"]["good"]["key"],
-            *[d["key"] for d in cfg["labels"]["defects"]],
-            RESERVED_TAB_KEYS[1],
-        ]
+        good_key = cfg["labels"]["good"]["key"]
+        defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
+        valid_tabs = [RESERVED_TAB_KEYS[0], good_key, *defect_keys, RESERVED_TAB_KEYS[1]]
         if tab not in valid_tabs:
             tab = "unclassified"
         all_images, _ = app.config["PV_INDEX"].get()
@@ -228,48 +227,53 @@ def create_app(
             "cfg": cfg,
             "modality": modality,
             "tab": tab,
+            "good_key": good_key,
+            "defect_keys": defect_keys,
+            "valid_tabs": valid_tabs,
             "all_images": all_images,
             "states": states,
             "all_types": all_types,
             "selected_types": selected_types,
+            "modality_displays": {m["code"]: m["display_name"] for m in cfg["modalities"]},
+            # preview URL version string: config window changes bust the cache
+            "window_sig": {
+                m["code"]: hashlib.md5(
+                    repr(app.config["PV_PREVIEW_WINDOWS"].get(m["code"])).encode()
+                ).hexdigest()[:8]
+                for m in cfg["modalities"]
+            },
         }
 
-    def build_cards(view: dict) -> list[dict]:
-        """Return the card dicts matching the view's modality/tab filters."""
-        cfg = view["cfg"]
-        modality = view["modality"]
-        good_key = cfg["labels"]["good"]["key"]
-        defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
-        modality_displays = {m["code"]: m["display_name"] for m in cfg["modalities"]}
-        window_sig = {
-            m["code"]: hashlib.md5(
-                repr(app.config["PV_PREVIEW_WINDOWS"].get(m["code"])).encode()
-            ).hexdigest()[:8]
-            for m in cfg["modalities"]
-        }
-        cards = []
+    def filtered_images(
+        view: dict,
+    ) -> Iterator[tuple[str, images.ImageInfo, dict, bool]]:
+        """Yield the images passing the view's modality and cell-type filters.
+
+        Yields (filename, info, state, is_unclassified) tuples. The single
+        filter predicate shared by the /main tab counts and the /api/cards
+        batches, so both always see exactly the same image set.
+        """
         for filename, info in view["all_images"].items():
-            if modality != "all" and info.modality != modality:
+            if view["modality"] != "all" and info.modality != view["modality"]:
                 continue
             if view["selected_types"] and info.cell_type not in view["selected_types"]:
                 continue
             state = view["states"].get(filename, {})
-            is_unclassified = not state.get(good_key, 0) and not any(
-                state.get(k, 0) for k in defect_keys
+            is_unclassified = not state.get(view["good_key"], 0) and not any(
+                state.get(k, 0) for k in view["defect_keys"]
             )
-            if not _matches_tab(state, view["tab"], is_unclassified):
-                continue
-            cards.append(
-                {
-                    "filename": filename,
-                    "name": os.path.splitext(os.path.basename(filename))[0],
-                    "modality_display": modality_displays.get(info.modality, info.modality),
-                    "good": state.get(good_key, 0),
-                    "defects": {k: state.get(k, 0) for k in defect_keys},
-                    "preview_url": url_for("preview", file=filename, v=window_sig[info.modality]),
-                }
-            )
-        return cards
+            yield filename, info, state, is_unclassified
+
+    def card_data(view: dict, filename: str, info: images.ImageInfo, state: dict) -> dict:
+        """Return the template dict for one card of the given view."""
+        return {
+            "filename": filename,
+            "name": os.path.splitext(os.path.basename(filename))[0],
+            "modality_display": view["modality_displays"].get(info.modality, info.modality),
+            "good": state.get(view["good_key"], 0),
+            "defects": {k: state.get(k, 0) for k in view["defect_keys"]},
+            "preview_url": url_for("preview", file=filename, v=view["window_sig"][info.modality]),
+        }
 
     @app.route("/main")
     def main() -> Response | str:
@@ -280,32 +284,32 @@ def create_app(
         cfg = view["cfg"]
         modality = view["modality"]
         tab = view["tab"]
-        good_key = cfg["labels"]["good"]["key"]
-        defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
-        label_keys = [good_key] + defect_keys
-        valid_tabs = [RESERVED_TAB_KEYS[0], *label_keys, RESERVED_TAB_KEYS[1]]
+        good_key = view["good_key"]
+        defect_keys = view["defect_keys"]
+        valid_tabs = view["valid_tabs"]
 
-        counts = {t: 0 for t in valid_tabs}
-        # image count per cell type in the selected modality (for the panel)
+        # image count per cell type in the selected modality (for the panel);
+        # independent of the type selection so every type keeps its count
         type_counts = {t: 0 for t in view["all_types"]}
-        for filename, info in view["all_images"].items():
+        for info in view["all_images"].values():
             if modality != "all" and info.modality != modality:
                 continue
             type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
-            if view["selected_types"] and info.cell_type not in view["selected_types"]:
-                continue
-            state = view["states"].get(filename, {})
-            is_unclassified = not state.get(good_key, 0) and not any(
-                state.get(k, 0) for k in defect_keys
-            )
-            # one predicate drives the tab counts; the cards themselves are
-            # built separately so /api/cards can reuse the same filtering
+
+        # one pass over the filtered images drives the tab counts and builds
+        # the first card batch; /api/cards reuses the same predicate and
+        # builds the following batches on demand
+        counts = {t: 0 for t in valid_tabs}
+        cards = []
+        card_total = 0
+        for filename, info, state, is_unclassified in filtered_images(view):
             for t in valid_tabs:
                 if _matches_tab(state, t, is_unclassified):
                     counts[t] += 1
-
-        cards = build_cards(view)
-        batch = cards[:GALLERY_BATCH]
+            if _matches_tab(state, tab, is_unclassified):
+                card_total += 1
+                if len(cards) < GALLERY_BATCH:
+                    cards.append(card_data(view, filename, info, state))
 
         tabs = [
             {"key": "unclassified", "label": "Unclassified", "count": counts["unclassified"]},
@@ -361,9 +365,14 @@ def create_app(
             modality=modality,
             tab=tab,
             tabs=tabs,
-            cards=batch,
-            card_total=len(cards),
-            query_string=request.query_string.decode(),
+            cards=cards,
+            card_total=card_total,
+            # the sentinel query is rebuilt from the resolved filters, so a
+            # stray offset=... in the browser URL can never leak into the
+            # pagination and repeat batches (see main.js)
+            sentinel_query=urlencode(
+                {"modality": modality, "tab": tab, "cell_type": selected_types}, doseq=True
+            ),
             selected_types=selected_types,
             cell_type_label=cell_type_label,
             cell_types=[{"value": t, "count": type_counts[t]} for t in view["all_types"]],
@@ -388,25 +397,33 @@ def create_app(
         view = view_params()
         try:
             offset = max(0, int(request.args.get("offset", 0)))
-            limit = min(GALLERY_BATCH, max(1, int(request.args.get("limit", GALLERY_BATCH))))
         except ValueError:
-            return jsonify(ok=False, error="offset and limit must be integers"), 400
-        cards = build_cards(view)
-        batch = cards[offset : offset + limit]
+            return jsonify(ok=False, error="offset must be an integer"), 400
+        # single pass over the filtered images: skip the offset, materialize
+        # only one batch and merely count the rest — building every matching
+        # card would be O(N) work per request on large image sets
+        cards = []
+        remaining = 0
+        skipped = 0
+        for filename, info, state, is_unclassified in filtered_images(view):
+            if not _matches_tab(state, view["tab"], is_unclassified):
+                continue
+            if skipped < offset:
+                skipped += 1
+                continue
+            if len(cards) < GALLERY_BATCH:
+                cards.append(card_data(view, filename, info, state))
+            else:
+                remaining += 1
         html = render_template(
             "cards.html",
-            cards=batch,
+            cards=cards,
             modality=view["modality"],
-            good_key=view["cfg"]["labels"]["good"]["key"],
+            good_key=view["good_key"],
             good_label=view["cfg"]["labels"]["good"]["display_name"],
             defects=view["cfg"]["labels"]["defects"],
         )
-        return jsonify(
-            ok=True,
-            html=html,
-            count=len(batch),
-            remaining=max(0, len(cards) - offset - len(batch)),
-        )
+        return jsonify(ok=True, html=html, count=len(cards), remaining=remaining)
 
     @app.route("/api/save", methods=["POST"])
     def api_save() -> Response:
@@ -487,10 +504,10 @@ def create_app(
         window = app.config["PV_PREVIEW_WINDOWS"].get(info.modality) if info is not None else None
         try:
             cache_path = generator.get_preview_path(filename, window=window)
+            return send_file(cache_path, mimetype="image/jpeg")
         except (ValueError, OSError, previews.PreviewError) as exc:
             app.logger.warning("Preview request failed for %r: %s", filename, exc)
             abort(404)
-        return send_file(cache_path, mimetype="image/jpeg")
 
     @app.route("/api/original/<path:filename>")
     def api_original(filename: str) -> Response:

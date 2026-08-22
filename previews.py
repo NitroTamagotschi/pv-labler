@@ -22,6 +22,14 @@ class PreviewError(Exception):
     """Raised when a preview cannot be generated."""
 
 
+def _discard(path: str) -> None:
+    """Remove a temp file, ignoring failures."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def probe_data_range(source: str) -> float:
     """Return the raw value range (max) of one image for slider sizing.
 
@@ -107,18 +115,19 @@ class PreviewGenerator:
         tmp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
         try:
             image.save(tmp_path, format="JPEG", quality=PREVIEW_QUALITY)
-            try:
-                os.replace(tmp_path, cache_path)
-            except OSError:
-                # Windows: another process may hold the identical destination
-                # open briefly (e.g. while serving it); existing cache wins
-                if not os.path.isfile(cache_path):
-                    raise
-        finally:
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+        except BaseException:
+            _discard(tmp_path)
+            raise
+        try:
+            os.replace(tmp_path, cache_path)
+        except OSError:
+            _discard(tmp_path)
+            # Windows: another process may hold the identical destination
+            # open briefly (e.g. while serving it); existing cache wins
+            if not os.path.isfile(cache_path):
+                raise
+        # no-op after a successful replace, which already moved the file
+        _discard(tmp_path)
 
     def _read_source(self, source: str) -> np.ndarray:
         """Read the image data, using tifffile for TIFFs and Pillow otherwise."""

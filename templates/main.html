@@ -89,7 +89,7 @@
   <main class="gallery">
     {% include "cards.html" %}
     {% if cards|length < card_total %}
-    <div id="gallery-sentinel" data-offset="{{ cards|length }}" data-query="{{ query_string }}"></div>
+    <div id="gallery-sentinel" data-offset="{{ cards|length }}" data-query="{{ sentinel_query }}"></div>
     {% endif %}
     <p class="empty" hidden>No images match the current filter.</p>
   </main>

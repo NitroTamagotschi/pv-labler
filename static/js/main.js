@@ -75,9 +75,11 @@
   }
 
   async function saveChanges() {
+    // entry.dirty is maintained incrementally by updateDirty, so saving
+    // picks up exactly the dirty cards without scanning the whole gallery
     const changes = {};
     for (const entry of cardEntries) {
-      if (cardIsDirty(entry)) {
+      if (entry.dirty) {
         changes[entry.card.dataset.filename] = cardState(entry);
       }
     }
@@ -467,6 +469,9 @@
     const sentinel = document.getElementById("gallery-sentinel");
     if (sentinel) {
       let loading = false;
+      // retry state kept as a flag instead of reusing the textContent, so
+      // the error text and the retry behavior cannot get out of sync
+      let failed = false;
       const loadMore = async () => {
         if (loading) {
           return;
@@ -476,33 +481,44 @@
           const offset = Number(sentinel.dataset.offset);
           const query = sentinel.dataset.query;
           const response = await fetch(`${APP.cardsUrl}?${query}&offset=${offset}`);
+          if (response.status === 401) {
+            // session expired: the reload lands on the login page
+            location.reload();
+            return;
+          }
           const data = await response.json();
           if (!response.ok || !data.ok) {
             throw new Error(data.error || "loading more cards failed");
           }
-          const known = new Set(cardEntries.map((entry) => entry.card));
-          sentinel.insertAdjacentHTML("beforebegin", data.html);
-          for (const card of document.querySelectorAll(".card")) {
-            if (known.has(card)) {
-              continue;
-            }
+          // parse and wire the batch in a detached container, so the scan
+          // stays proportional to the batch size instead of the whole gallery
+          const container = document.createElement("div");
+          container.innerHTML = data.html;
+          const newCards = [...container.querySelectorAll(".card")];
+          for (const card of newCards) {
             const entry = makeEntry(card);
             cardEntries.push(entry);
             wireCard(entry);
           }
+          sentinel.before(...newCards);
           sentinel.dataset.offset = String(offset + data.count);
+          if (failed) {
+            failed = false;
+            sentinel.textContent = "";
+          }
           if (data.remaining <= 0) {
             sentinel.remove();
           }
         } catch (error) {
           console.error(error);
+          failed = true;
           sentinel.textContent = "Failed to load more cards — click to retry";
         } finally {
           loading = false;
         }
       };
       sentinel.addEventListener("click", () => {
-        if (sentinel.textContent) {
+        if (failed) {
           sentinel.textContent = "";
           loadMore();
         }

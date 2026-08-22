@@ -3,7 +3,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 .pytest-tmp/
-.devcontainer
 .claude
 
 # Laufzeitdaten (nicht versionieren)
