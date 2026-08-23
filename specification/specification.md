@@ -81,7 +81,7 @@ Dateiname: `config.json`
 
 Die Benutzeroberfläche, die Filter-Tabs, die Checkboxen und die CSV-Labelspalten sollen aus dieser Konfiguration erzeugt werden, soweit dies technisch sinnvoll möglich ist.
 
-Optional können `modal_max_width` und `modal_max_height` gesetzt werden: maximale Breite bzw. Höhe des Bildgruppen-Pop-ups in Pixeln (Breiten-Standard: 1100, Höhen-Standard: 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe.
+Optional können `modal_max_width` und `modal_max_height` gesetzt werden: maximale Breite bzw. Höhe des Bildgruppen-Pop-ups in Pixeln — gemeint ist das Dialog-Fenster selbst, nicht die darin gezeigten Bilder (Breiten-Standard: 1100, Höhen-Standard: 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe. Die Bildgröße folgt daraus nur indirekt: Bilder füllen ihre Grid-Spalte im Fenster und sind nie breiter als das Fenster.
 
 Optional können pro Modalität `preview_min` und `preview_max` gesetzt werden (gemeinsam, `min < max`): ein lineares Anzeigefenster in Rohwerten für die JPEG-Vorschau von Ganzzahl-Daten, außerhalb des Fensters wird geklemmt. Das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt. Ohne Angabe werden 8-Bit-Werte unverändert übernommen und bei 16-Bit das High-Byte verwendet. Die Werte können zur Laufzeit über das Preview-Window-Panel der Oberfläche geändert werden; die Anwendung schreibt Änderungen in die `config.json` zurück.
 
@@ -437,6 +437,6 @@ Die Implementierung gilt als funktionsfähig, wenn alle folgenden Kriterien erf�
 18. In der Bildgruppenansicht zoomt das Mausrad in alle Bilder synchron auf den Cursor zu; Ziehen verschiebt, Doppelklick setzt zurück.
 19. Die Originaldatei kann aus der Bildgruppenansicht heruntergeladen werden.
 20. Das `Preview-Window`-Panel stellt das Vorschau-Fenster der gewählten Modalität ein (Regler und Zahleneingabe) und schreibt Änderungen in die `config.json` zurück; das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt.
-21. Breite und Höhe des Bildgruppen-Pop-ups folgen den optionalen Config-Werten `modal_max_width` und `modal_max_height`.
+21. Breite und Höhe des Bildgruppen-Pop-ups (des Dialog-Fensters, nicht der Bilder selbst) folgen den optionalen Config-Werten `modal_max_width` und `modal_max_height`.
 22. Die Tastenkombination `Strg+S` speichert alle ungespeicherten Änderungen wie ein Klick auf `Save`; ohne ungespeicherte Änderungen passiert nichts und die Seite lädt nicht neu.
 23. Die Galerie zeigt zunächst höchstens 100 Karten und lädt beim Scrollen ans Ende automatisch weitere nach, bis alle Bilder der gewählten Ansicht erreichbar sind.

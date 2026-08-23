@@ -98,7 +98,7 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 - `modalities[].code` – Code für UI und CSV-Spalte (`UVF` wird als `uv` gespeichert); `display_name` – Anzeige im Dropdown und auf den Karten.
 - `modalities[].filename_code` – optional, der im Dateinamen verwendete String (Standard: `code`), z. B. `"filename_code": "UV"` für Dateien mit `..._UV_...`.
 - `labels.good` / `labels.defects[]` – jeweils `key` und `display_name`; jedes Defektlabel erzeugt einen Tab und eine CSV-Spalte.
-- Optional: `modal_max_width` / `modal_max_height` – maximale Breite bzw. Höhe des Gruppierungs-Modals in Pixeln (Breiten-Standard 1100, Höhen-Standard 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe.
+- Optional: `modal_max_width` / `modal_max_height` – maximale Breite bzw. Höhe des Bildgruppen-Pop-up-Fensters in Pixeln (Breiten-Standard 1100, Höhen-Standard 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe.
 - Optional pro Modalität: `preview_min` / `preview_max` – lineares Vorschau-Fenster in Rohwerten (außerhalb wird geklemmt) für die JPEG-Vorschau von Ganzzahl-Daten; ohne Angabe bleibt das High-Byte- bzw. 1:1-Verhalten. Das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt — ein 16-Bit-Fenster kann 8-Bit-Bilder also nicht „zerdrücken" (und umgekehrt).
 - Optional: `images_dir` – absoluter Pfad zum Ordner mit den Quellbildern (statt `data/images/`); der Ordner muss existieren und wird nicht automatisch angelegt. Die `datename`-Werte in `labels.csv` bleiben relativ zu diesem Ordner.
 - Reserviert: der Modalitäts-Code `all` sowie die Label-Keys `all` und `unclassified` (Kollision mit Tab-Keys).
