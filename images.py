@@ -15,6 +15,7 @@ last segment). Segments between modality and cell identifier, plus trailing
 segments, form the variant.
 """
 
+import fnmatch
 import functools
 import os
 import re
@@ -121,6 +122,39 @@ def parse_filename(filename: str, filename_codes: dict[str, str]) -> ImageInfo |
         cell_id=parts[cell_idx],
         variant="_".join(variant_parts) or None,
     )
+
+
+@functools.lru_cache(maxsize=256)
+def _search_pattern(pattern: str) -> re.Pattern[str]:
+    """Compile the case-insensitive glob matcher for one search pattern.
+
+    fnmatch.translate only emits ".*", ".", escaped literals and character
+    classes — never nested quantifiers — so matching cost is linear in the
+    pattern and filename lengths (patterns are capped at 200 chars in
+    app.view_params). The implicit trailing star makes a pattern like
+    "C14_A6*Cell045" also match "C14_A6_EL_Cell045_normalized.tif".
+    """
+    return re.compile(fnmatch.translate(pattern + "*"), re.IGNORECASE)
+
+
+def filename_matches_search(filename: str, pattern: str) -> bool:
+    """Return whether a relative image filename matches a search pattern.
+
+    An empty pattern matches everything. Matching is case-insensitive and
+    tries the basename and the full relative path, so folder names can be
+    searched too (e.g. "C14-A/*"). Patterns without *, ? or [ are plain
+    substring searches over the full path; with wildcards they are
+    fnmatch-style globs with an implicit trailing star: * matches any run
+    of characters (including "/"), ? exactly one character, and
+    [abc]/[!abc] character classes.
+    """
+    if not pattern:
+        return True
+    if any(ch in pattern for ch in "*?["):
+        matcher = _search_pattern(pattern)
+        return bool(matcher.match(filename) or matcher.match(os.path.basename(filename)))
+    # the basename is always a substring of the full path, so one check covers both
+    return pattern.casefold() in filename.casefold()
 
 
 def scan_images(

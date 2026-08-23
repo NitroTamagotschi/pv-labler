@@ -1,6 +1,7 @@
 """Smoke tests for the Flask routes (app.py) with a small custom config."""
 
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -354,3 +355,150 @@ def test_original_route(client):
     assert res.data == source.read_bytes()
     assert client.get("/api/original/nope.tif").status_code == 404
     assert client.get("/api/original/..evil.tif").status_code == 404
+
+
+# --- search filter ------------------------------------------------------------
+
+
+def test_search_filter(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=all&tab=unclassified&q=Cell001")
+    assert b"23-P09-B1_VI_Cell001" in page.data
+    assert b"23-P09-B1_EL_Cell001" in page.data
+    assert b"23-P09-B2_VI_Cell002" not in page.data
+
+
+def test_search_wildcard_middle(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=all&tab=unclassified&q=23-P09-B1*Cell001")
+    assert page.data.count(b'class="card"') == 2
+    # implicit trailing star: both B1 files match, B2/B3 do not
+    page = client.get("/main?modality=all&tab=unclassified&q=23-P09-B1*")
+    assert page.data.count(b'class="card"') == 2
+    assert b"23-P09-B2_VI_Cell002" not in page.data
+
+
+def test_search_case_insensitive(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=all&tab=unclassified&q=cell001")
+    assert page.data.count(b'class="card"') == 2
+    page = client.get("/main?modality=all&tab=unclassified&q=CELL002")
+    assert b"23-P09-B2_VI_Cell002" in page.data
+    assert b"23-P09-B1_VI_Cell001" not in page.data
+
+
+def test_search_combines_with_modality(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=EL&tab=unclassified&q=Cell001")
+    assert b"23-P09-B1_EL_Cell001" in page.data
+    assert b"23-P09-B1_VI_Cell001" not in page.data
+
+
+def test_search_combines_with_cell_type(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=VI&tab=unclassified&q=Cell00&cell_type=23-P09-B2")
+    assert b"23-P09-B2_VI_Cell002" in page.data
+    assert b"23-P09-B1_VI_Cell001" not in page.data
+
+
+def test_search_reflected_in_tab_counts(client):
+    """Tab and cell-type counts follow the search-filtered image set."""
+    client.post("/login", data={"name": "Max"})
+    client.post(
+        "/api/save",
+        json={"changes": {"23-P09-B1_EL_Cell001.tif": {"crack": 1}}},
+    )
+    page = client.get("/main?modality=all&tab=unclassified&q=Cell001")
+    assert page.data.count(b'class="card"') == 1
+    assert b"23-P09-B1_VI_Cell001" in page.data
+    page = client.get("/main?modality=all&tab=all&q=Cell001")
+    assert page.data.count(b'class="card"') == 2
+    # the cell-type panel counts respect the search (B2 matches nothing)
+    assert b'23-P09-B2 <span class="count">0</span>' in page.data
+
+
+def test_search_infinite_scroll_and_sentinel(monkeypatch, tmp_path):
+    """The sentinel query carries the search; /api/cards batches follow it."""
+    monkeypatch.setattr(app_module, "GALLERY_BATCH", 2)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for i in range(1, 6):
+        tifffile.imwrite(
+            str(images_dir / f"23-P09-B1_VI_Cell{i:03d}.tif"), np.zeros((32, 32), dtype=np.uint8)
+        )
+    app = create_app(
+        config=CONFIG,
+        images_dir=str(images_dir),
+        labels_csv=str(tmp_path / "labels.csv"),
+        change_log=str(tmp_path / "change_log.txt"),
+        previews_dir=str(tmp_path / "previews"),
+    )
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        client.post("/login", data={"name": "Max"})
+        page = client.get("/main?modality=VI&tab=unclassified&q=23-P09*")
+        assert page.data.count(b'class="card"') == 2
+        # the sentinel query carries the percent-encoded search pattern
+        assert re.search(rb'data-query="[^"]*q=23-P09%2A[^"]*"', page.data)
+        res = client.get("/api/cards?modality=VI&tab=unclassified&q=23-P09*&offset=2")
+        data = res.get_json()
+        assert data["ok"]
+        assert data["count"] == 2
+        assert data["remaining"] == 1
+        assert data["html"].count('class="card"') == 2
+        # the next batch under the same search finishes the set
+        data = client.get("/api/cards?modality=VI&tab=unclassified&q=23-P09*&offset=4").get_json()
+        assert data["count"] == 1
+        assert data["remaining"] == 0
+        # a pattern without matches returns an empty batch
+        data = client.get(
+            "/api/cards?modality=VI&tab=unclassified&q=NoSuch*&offset=0"
+        ).get_json()
+        assert data["count"] == 0
+        assert data["remaining"] == 0
+
+
+def test_search_empty_or_whitespace_is_no_filter(client):
+    client.post("/login", data={"name": "Max"})
+    for query in ("q=", "q=%20", "q=%20%20"):
+        page = client.get(f"/main?modality=all&tab=unclassified&{query}")
+        assert page.data.count(b'class="card"') == 4
+
+
+def test_search_overlong_is_truncated(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=all&tab=unclassified&q=" + "x" * 250)
+    # the rendered input shows the truncated pattern
+    assert b'name="q" value="' + b"x" * 200 + b'"' in page.data
+    # the truncated pattern matches nothing, so the gallery stays empty
+    assert b'class="card"' not in page.data
+    assert b'id="gallery-sentinel"' not in page.data
+
+
+def test_search_ui_preservation(client):
+    """The search is kept in forms and tab links and dropped by the ✕ link."""
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=EL&tab=all&cell_type=23-P09-B1&q=Cell001")
+    # search input + hidden inputs in the modality form and the type panel
+    assert page.data.count(b'name="q" value="Cell001"') == 3
+    # tab links carry the search
+    assert (
+        b'href="/main?modality=EL&amp;tab=unclassified&amp;cell_type=23-P09-B1&amp;q=Cell001"'
+        in page.data
+    )
+    # the clear link keeps every filter except q
+    assert (
+        b'class="search-clear" href="/main?modality=EL&amp;tab=all&amp;cell_type=23-P09-B1"'
+        in page.data
+    )
+    # following the clear link renders an empty search input
+    cleared = client.get("/main?modality=EL&tab=all&cell_type=23-P09-B1")
+    assert b'name="q" value=""' in cleared.data
+
+
+def test_search_empty_result(client):
+    client.post("/login", data={"name": "Max"})
+    page = client.get("/main?modality=all&tab=unclassified&q=NoSuchImage")
+    assert b'class="card"' not in page.data
+    assert b'id="gallery-sentinel"' not in page.data
+    assert b"No images match the current filter." in page.data
