@@ -570,9 +570,21 @@ body {
   margin-top: 6px;
 }
 
-.modal-window-controls input[type="range"] {
+.modal-window-slider {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.modal-window-slider input[type="range"] {
+  width: 100%;
+  flex: none;
+}
+
+.modal-window-head {
+  white-space: nowrap;
 }
 
 .modal-window-label {

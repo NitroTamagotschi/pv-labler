@@ -233,14 +233,20 @@
       // begins with maximal contrast and can be widened to the raw mapping
       const nativeMax =
         rawData instanceof Float32Array ? 1 : 2 ** (rawData.BYTES_PER_ELEMENT * 8) - 1;
+      // the value sits above the slider (not beside it) so a wider value
+      // never changes the slider width, which would otherwise oscillate
       const makeSlider = (labelText, value) => {
-        const label = document.createElement("label");
+        const wrap = document.createElement("label");
+        wrap.className = "modal-window-slider";
+        const head = document.createElement("span");
+        head.className = "modal-window-head";
+        const label = document.createElement("span");
         label.className = "modal-window-label";
         label.textContent = labelText;
         const valueSpan = document.createElement("span");
         valueSpan.className = "modal-window-value";
         valueSpan.textContent = formatValue(value);
-        label.append(" ", valueSpan);
+        head.append(label, " ", valueSpan);
         const slider = document.createElement("input");
         slider.type = "range";
         slider.min = "0";
@@ -248,7 +254,8 @@
         // "any" keeps programmatic values exact (no step-grid snapping)
         slider.step = "any";
         slider.value = String(value);
-        return { label, slider, valueSpan };
+        wrap.append(head, slider);
+        return { wrap, slider, valueSpan };
       };
       const min = makeSlider("Min", dataMin);
       const max = makeSlider("Max", dataMax);
@@ -261,7 +268,7 @@
       bits.textContent = `${rawData.BYTES_PER_ELEMENT * 8}-Bit`;
       controls = document.createElement("div");
       controls.className = "modal-window-controls";
-      controls.append(min.label, min.slider, max.label, max.slider, bits, reset);
+      controls.append(min.wrap, max.wrap, bits, reset);
       figure.appendChild(controls);
       const update = () => {
         min.valueSpan.textContent = formatValue(Number(min.slider.value));
