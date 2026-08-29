@@ -12,7 +12,7 @@ Voraussetzungen:
 
 ```bash
 # installiert alle Dependencies
-uv sync    
+uv sync
 
 # App starten (http://127.0.0.1:5000)
 uv run python app.py
@@ -48,14 +48,14 @@ Die Regler zeigen ihren aktuellen Wert direkt am Label an; daneben steht die **B
 
 Eine Zeile pro Bilddatei (maximal); bei erneutem Speichern wird die bestehende Zeile aktualisiert. Geschrieben wird erst beim Klick auf `Save`. Die Spalten stehen in fester Reihenfolge:
 
-| Spalte | Bedeutung |
-|---|---|
-| `Datum` | Datum der letzten Änderung (`YYYY-MM-DD`) |
-| `Zeit` | Uhrzeit der letzten Änderung (`HH:MM:SS`) |
-| `Name of labeler` | Name des angemeldeten Benutzers |
-| `datename` | Dateiname der gelabelten Bilddatei |
-| `uv`, `vi`, `el` | Modalitätsspalten (binär, genau eine ist `1`; `UVF` wird als `uv` gespeichert) |
-| `good` + Defektspalten | Labelzustand (`0`/`1`); die Defektspalten werden aus `config.json` erzeugt |
+| Spalte                 | Bedeutung                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `Datum`                | Datum der letzten Änderung (`YYYY-MM-DD`)                                      |
+| `Zeit`                 | Uhrzeit der letzten Änderung (`HH:MM:SS`)                                      |
+| `Name of labeler`      | Name des angemeldeten Benutzers                                                |
+| `datename`             | Dateiname der gelabelten Bilddatei                                             |
+| `uv`, `vi`, `el`       | Modalitätsspalten (binär, genau eine ist `1`; `UVF` wird als `uv` gespeichert) |
+| `good` + Defektspalten | Labelzustand (`0`/`1`); die Defektspalten werden aus `config.json` erzeugt     |
 
 Beispielzeile:
 
@@ -127,6 +127,19 @@ uv run python scripts/convert_approved_labels.py [approved.csv] --labeler "Max M
 - **Ausgaben**: Der Default-Zielpfad ist `<name>_converted.csv` neben der Quelldatei — `data/labels.csv` wird nur angefasst, wenn `--output` explizit darauf zeigt. Bestehende Zeilen des Ziels werden per `datename` aktualisiert, andere bleiben unangetastet.
 - **Fehler-Report**: Einträge, die nicht korrekt verarbeitet werden können (Bild fehlt oder Pfad mehrdeutig, Label nicht in `config.json` definiert, Modalität fehlt im Dateinamen, Labels leer), landen in `<output stem>_failed.csv` (Spalten `filename,labels,reason`) und werden zusätzlich auf der Konsole ausgegeben; der Exit-Code ist dann `1`.
 - `--dry-run` zeigt Zeilen und Report an, ohne zu schreiben.
+
+### CSV-Dateien zusammenführen (`merge_csv.py`)
+
+`scripts/merge_csv.py` fasst alle `*.csv`-Dateien eines Ordners (in sortierter Reihenfolge) zeilenweise zu einer einzigen CSV zusammen; doppelte Zeilen bleiben erhalten. Neben der Ausgabedatei wird ein Protokoll `<output stem>_report.txt` geschrieben:
+
+```bash
+uv run python scripts/merge_csv.py [ordner] -o merged.csv
+```
+
+- **`ordner`** – Ordner mit den CSV-Dateien (Standard: `./csv_ordner`); enthält er keine `*.csv`-Dateien, bricht das Skript mit Fehlermeldung und Exit-Code `1` ab.
+- **`-o`/`--output`** – Ausgabedatei (Standard: `merged.csv`); die Ausgabe wird mit UTF-8 geschrieben, fehlende Unterordner des Zielpfads werden angelegt.
+- **Protokoll**: `<output stem>_report.txt` enthält Zeitpunkt, Quelle, pro Datei die Zeilen- und Spaltenanzahl, von der ersten Datei abweichende Spaltensätze, doppelte Zeilen samt Quelldatei und Zeilennummern (max. 20 Gruppen aufgelistet) sowie die Gesamtzahlen.
+- **Hinweis**: Dateien mit einer Spalte `_quelle` führen zum Abbruch — diese Spalte ist intern für die Protokollierung reserviert und darf in den Eingabedaten nicht vorkommen.
 
 ### Tests (pytest)
 

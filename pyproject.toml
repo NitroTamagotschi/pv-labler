@@ -8,6 +8,7 @@ requires-python = ">=3.10"
 dependencies = [
     "flask>=3.0",
     "numpy>=1.26",
+    "pandas>=2.3.3",
     "pillow>=10.0",
     "tifffile>=2024.0",
 ]
