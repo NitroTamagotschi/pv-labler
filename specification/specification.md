@@ -85,7 +85,7 @@ Optional können `modal_max_width` und `modal_max_height` gesetzt werden: maxima
 
 Optional können pro Modalität `preview_min` und `preview_max` gesetzt werden (gemeinsam, `min < max`): ein lineares Anzeigefenster in Rohwerten für die JPEG-Vorschau von Ganzzahl-Daten, außerhalb des Fensters wird geklemmt. Das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt. Ohne Angabe werden 8-Bit-Werte unverändert übernommen und bei 16-Bit das High-Byte verwendet. Die Werte können zur Laufzeit über das Preview-Window-Panel der Oberfläche geändert werden; die Anwendung schreibt Änderungen in die `config.json` zurück.
 
-Optional kann `images_dir` gesetzt werden: ein absoluter Pfad zum Ordner mit den Quellbildern (statt `data/images/`). Der Ordner muss existieren und wird nicht automatisch angelegt. Die `datename`-Werte in `labels.csv` bleiben relativ zu diesem Ordner.
+Optional kann `images_dir` gesetzt werden: ein absoluter Pfad zum Ordner mit den Quellbildern (statt `data/images/`). Der Ordner muss existieren und wird nicht automatisch angelegt. Die `image_path`-Werte in `labels.csv` bleiben relativ zu diesem Ordner.
 
 ## 4. Bilddateien und Zuordnung
 
@@ -284,17 +284,17 @@ Für jede Bilddatei existiert maximal eine aktuelle Zeile. Wird ein bereits gela
 Die CSV-Datei enthält mindestens folgende Spalten in genau dieser Reihenfolge:
 
 ```csv
-Datum,Zeit,Name of labeler,datename,uv,vi,el,good,crack,cross,dark,corrosion,discoloration,delamination
+date,time,labeler,image_path,uv,vi,el,good,crack,cross,dark,corrosion,discoloration,delamination
 ```
 
 Bedeutung:
 
 | Spalte | Beschreibung |
 |---|---|
-| `Datum` | Datum der letzten Änderung. |
-| `Zeit` | Uhrzeit der letzten Änderung. |
-| `Name of labeler` | Name des aktuell angemeldeten Benutzers. |
-| `datename` | Pfad der gelabelten Bilddatei relativ zu `data/images/` (mit `/` als Trenner; für Dateien im Hauptordner nur der Dateiname). |
+| `date` | Datum der letzten Änderung. |
+| `time` | Uhrzeit der letzten Änderung. |
+| `labeler` | Name des aktuell angemeldeten Benutzers. |
+| `image_path` | Pfad der gelabelten Bilddatei relativ zu `data/images/` (mit `/` als Trenner; für Dateien im Hauptordner nur der Dateiname). |
 | `uv` | `1`, falls die Bilddatei zur UV/UVF-Modalität gehört, sonst `0`. |
 | `vi` | `1`, falls die Bilddatei zur VI-Modalität gehört, sonst `0`. |
 | `el` | `1`, falls die Bilddatei zur EL-Modalität gehört, sonst `0`. |
@@ -305,12 +305,12 @@ Die Modalitätsspalten `uv`, `vi` und `el` sind binär. Für einen gültigen Dat
 
 > Wenn der konfigurierte Modalitätscode `UVF` lautet, wird dieser für die Speicherung in die geforderte CSV-Spalte `uv` abgebildet.
 
-Der Sample-Bildgenerator `scripts/create_sample_images.py` schreibt beim Erzeugen der Testbilder eine `ground_truth.csv` im selben Schema (`Datum`/`Zeit` leer, `Name of labeler` = `GroundTruth`); sie dient als Referenz eines korrekten Labeldurchlaufs und wird von den UI-Tests eingelesen und mit der erzeugten `labels.csv` verglichen.
+Der Sample-Bildgenerator `scripts/create_sample_images.py` schreibt beim Erzeugen der Testbilder eine `ground_truth.csv` im selben Schema (`date`/`time` leer, `labeler` = `GroundTruth`); sie dient als Referenz eines korrekten Labeldurchlaufs und wird von den UI-Tests eingelesen und mit der erzeugten `labels.csv` verglichen.
 
 ### 8.3 Beispiel
 
 ```csv
-Datum,Zeit,Name of labeler,datename,uv,vi,el,good,crack,cross,dark,corrosion,discoloration,delamination
+date,time,labeler,image_path,uv,vi,el,good,crack,cross,dark,corrosion,discoloration,delamination
 2026-08-14,10:32:05,Max Muster,23-P09-B1_EL_Cell001.tif,0,0,1,0,1,0,0,0,0,0
 ```
 

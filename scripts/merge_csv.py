@@ -74,7 +74,7 @@ def build_report(input_folder: Path, files: list[Path],
         "",
         f"Dateien ({len(files)}):",
     ]
-    for file, df in zip(files, frames):
+    for file, df in zip(files, frames, strict=True):
         lines.append(f"  - {file.name}: {len(df)} Zeile(n), "
                      f"{len(df.columns) - 1} Spalten")
 
@@ -82,7 +82,7 @@ def build_report(input_folder: Path, files: list[Path],
     first_columns = set(frames[0].columns) - {SOURCE_COLUMN}
     differing = [
         (file.name, set(df.columns) - {SOURCE_COLUMN})
-        for file, df in zip(files, frames)
+        for file, df in zip(files, frames, strict=True)
         if set(df.columns) - {SOURCE_COLUMN} != first_columns
     ]
     lines.append("")
@@ -136,10 +136,11 @@ def format_row(key: object, columns: list[str]) -> str:
     """Format a group key as 'col=value, ...' for the report."""
     if not isinstance(key, tuple):
         key = (key,)
-    return ", ".join(f"{col}={val}" for col, val in zip(columns, key))
+    return ", ".join(f"{col}={val}" for col, val in zip(columns, key, strict=True))
 
 
 def main() -> None:
+    """Parse CLI arguments and run the CSV merge."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "input_folder",

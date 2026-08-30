@@ -146,7 +146,7 @@ def test_main_resolves_paths_writes_output_and_failure_report(tmp_path, monkeypa
     )
     output_path = tmp_path / "labels.csv"
     output_path.write_text(
-        "Datum,Zeit,Name of labeler,datename,uv,vi,el,good,crack,cross,dark,"
+        "date,time,labeler,image_path,uv,vi,el,good,crack,cross,dark,"
         "corrosion,discoloration,delamination\n"
         "2026-08-17,20:34:43,Kevin,TEST_23-P09-B1_VI_Cell001.tif,0,1,0,0,0,0,0,0,0,0\n"
         "2026-08-17,20:55:43,Kevin,23-P09-C/VI/23-P09-C4_VI_Cell001_normalized.tif,"
@@ -172,12 +172,12 @@ def test_main_resolves_paths_writes_output_and_failure_report(tmp_path, monkeypa
 
     with open(output_path, encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
-    by_name = {row["datename"]: row for row in rows}
+    by_name = {row["image_path"]: row for row in rows}
     # untouched row keeps its original values
-    assert by_name["TEST_23-P09-B1_VI_Cell001.tif"]["Name of labeler"] == "Kevin"
+    assert by_name["TEST_23-P09-B1_VI_Cell001.tif"]["labeler"] == "Kevin"
     # updated row is rewritten with the new labeler and labels
     updated = by_name["23-P09-C/VI/23-P09-C4_VI_Cell001_normalized.tif"]
-    assert updated["Name of labeler"] == "Anna"
+    assert updated["labeler"] == "Anna"
     assert updated["vi"] == "1" and updated["dark"] == "1" and updated["discoloration"] == "1"
     assert updated["good"] == "0"
     assert len(rows) == 2

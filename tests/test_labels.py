@@ -31,10 +31,10 @@ GOOD = "good"
 DEFECTS = [d["key"] for d in CONFIG["labels"]["defects"]]
 
 EXPECTED_COLUMNS = [
-    "Datum",
-    "Zeit",
-    "Name of labeler",
-    "datename",
+    "date",
+    "time",
+    "labeler",
+    "image_path",
     "uv",
     "vi",
     "el",
@@ -114,12 +114,12 @@ def test_store_writes_spec_csv(tmp_path):
     assert len(rows) == 1
     assert list(rows[0].keys()) == EXPECTED_COLUMNS
     row = rows[0]
-    assert row["datename"] == "23-P09-B1_EL_Cell001.tif"
-    assert row["Name of labeler"] == "Max Muster"
+    assert row["image_path"] == "23-P09-B1_EL_Cell001.tif"
+    assert row["labeler"] == "Max Muster"
     assert (row["uv"], row["vi"], row["el"]) == ("0", "0", "1")  # exactly one modality = 1
     assert row["crack"] == "1" and row["good"] == "0"
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["Datum"])
-    assert re.fullmatch(r"\d{2}:\d{2}:\d{2}", row["Zeit"])
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", row["date"])
+    assert re.fullmatch(r"\d{2}:\d{2}:\d{2}", row["time"])
 
 
 def test_store_updates_row_in_place(tmp_path):
@@ -130,20 +130,20 @@ def test_store_updates_row_in_place(tmp_path):
     rows = read_csv(store.csv_path)
     assert len(rows) == 1  # no duplicate row for the same file
     assert rows[0]["crack"] == "0" and rows[0]["good"] == "1"
-    assert rows[0]["Name of labeler"] == "Erika"
+    assert rows[0]["labeler"] == "Erika"
 
 
 def test_labeling_second_file_preserves_first_row(tmp_path):
     store = make_store(tmp_path)
     store.set_label("23-P09-B1_EL_Cell001.tif", "EL", "crack", 1, "Max")
-    first_datum = read_csv(store.csv_path)[0]["Datum"]
+    first_date = read_csv(store.csv_path)[0]["date"]
     # labeling another file must not break the CSV write nor touch the first row
     store.set_label("23-P09-B1_EL_Cell002.tif", "EL", "cross", 1, "Max")
     rows = read_csv(store.csv_path)
     assert len(rows) == 2
-    by_name = {row["datename"]: row for row in rows}
+    by_name = {row["image_path"]: row for row in rows}
     assert by_name["23-P09-B1_EL_Cell001.tif"]["crack"] == "1"
-    assert by_name["23-P09-B1_EL_Cell001.tif"]["Datum"] == first_datum
+    assert by_name["23-P09-B1_EL_Cell001.tif"]["date"] == first_date
     assert by_name["23-P09-B1_EL_Cell002.tif"]["cross"] == "1"
 
 
@@ -197,7 +197,7 @@ def test_set_states_batch_writes_one_row_per_file(tmp_path):
     assert results["23-P09-B1_VI_Cell002.tif"]["good"] == 1
     rows = read_csv(store.csv_path)
     assert len(rows) == 2
-    by_name = {row["datename"]: row for row in rows}
+    by_name = {row["image_path"]: row for row in rows}
     assert (
         by_name["23-P09-B1_EL_Cell001.tif"]["uv"],
         by_name["23-P09-B1_EL_Cell001.tif"]["vi"],
@@ -238,7 +238,7 @@ def test_set_states_skips_unchanged(tmp_path):
     assert results == {}
     assert len(Path(store.log_path).read_text(encoding="utf-8").splitlines()) == 1
     rows = read_csv(store.csv_path)
-    assert len(rows) == 1 and rows[0]["Datum"] != ""  # row untouched
+    assert len(rows) == 1 and rows[0]["date"] != ""  # row untouched
 
 
 def test_set_states_rejects_unknown_key(tmp_path):

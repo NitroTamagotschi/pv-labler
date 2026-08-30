@@ -42,10 +42,10 @@ RGB_FILENAME = "TEST_23-P09-B1_UV_Cell004.tif"
 MODALITY_COLUMNS = {"VI": "vi", "EL": "el", "UV": "uv"}
 # labels.csv column order per §8.2; defect order matches the config labels
 CSV_COLUMNS = [
-    "Datum",
-    "Zeit",
-    "Name of labeler",
-    "datename",
+    "date",
+    "time",
+    "labeler",
+    "image_path",
     "uv",
     "vi",
     "el",
@@ -215,7 +215,7 @@ def build_sample_images(
 def write_ground_truth_csv(path: str) -> None:
     """Write the reference labels of a perfect labeling pass to path.
 
-    The file uses the labels.csv schema per §8.2: Datum/Zeit stay empty,
+    The file uses the labels.csv schema per §8.2: date/time stay empty,
     the labeler is "GroundTruth", and the label and modality columns carry
     the correct values for every sample image.
     """

@@ -50,17 +50,17 @@ Eine Zeile pro Bilddatei (maximal); bei erneutem Speichern wird die bestehende Z
 
 | Spalte                 | Bedeutung                                                                      |
 | ---------------------- | ------------------------------------------------------------------------------ |
-| `Datum`                | Datum der letzten Änderung (`YYYY-MM-DD`)                                      |
-| `Zeit`                 | Uhrzeit der letzten Änderung (`HH:MM:SS`)                                      |
-| `Name of labeler`      | Name des angemeldeten Benutzers                                                |
-| `datename`             | Dateiname der gelabelten Bilddatei                                             |
+| `date`                 | Datum der letzten Änderung (`YYYY-MM-DD`)                                      |
+| `time`                 | Uhrzeit der letzten Änderung (`HH:MM:SS`)                                      |
+| `labeler`              | Name des angemeldeten Benutzers                                                |
+| `image_path`           | Dateiname der gelabelten Bilddatei                                             |
 | `uv`, `vi`, `el`       | Modalitätsspalten (binär, genau eine ist `1`; `UVF` wird als `uv` gespeichert) |
 | `good` + Defektspalten | Labelzustand (`0`/`1`); die Defektspalten werden aus `config.json` erzeugt     |
 
 Beispielzeile:
 
 ```csv
-Datum,Zeit,Name of labeler,datename,uv,vi,el,good,crack,cross,dark,corrosion,discoloration,delamination
+date,time,labeler,image_path,uv,vi,el,good,crack,cross,dark,corrosion,discoloration,delamination
 2026-08-16,14:32:05,Max Muster,23-P09-B1_EL_Cell001.tif,0,0,1,0,1,0,0,0,0,0
 ```
 
@@ -100,7 +100,7 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 - `labels.good` / `labels.defects[]` – jeweils `key` und `display_name`; jedes Defektlabel erzeugt einen Tab und eine CSV-Spalte.
 - Optional: `modal_max_width` / `modal_max_height` – maximale Breite bzw. Höhe des Bildgruppen-Pop-up-Fensters in Pixeln (Breiten-Standard 1100, Höhen-Standard 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe.
 - Optional pro Modalität: `preview_min` / `preview_max` – lineares Vorschau-Fenster in Rohwerten (außerhalb wird geklemmt) für die JPEG-Vorschau von Ganzzahl-Daten; ohne Angabe bleibt das High-Byte- bzw. 1:1-Verhalten. Das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt — ein 16-Bit-Fenster kann 8-Bit-Bilder also nicht „zerdrücken" (und umgekehrt).
-- Optional: `images_dir` – absoluter Pfad zum Ordner mit den Quellbildern (statt `data/images/`); der Ordner muss existieren und wird nicht automatisch angelegt. Die `datename`-Werte in `labels.csv` bleiben relativ zu diesem Ordner.
+- Optional: `images_dir` – absoluter Pfad zum Ordner mit den Quellbildern (statt `data/images/`); der Ordner muss existieren und wird nicht automatisch angelegt. Die `image_path`-Werte in `labels.csv` bleiben relativ zu diesem Ordner.
 - Reserviert: der Modalitäts-Code `all` sowie die Label-Keys `all` und `unclassified` (Kollision mit Tab-Keys).
 
 ## Daten
@@ -121,10 +121,10 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 uv run python scripts/convert_approved_labels.py [approved.csv] --labeler "Max Muster"
 ```
 
-- **`--labeler`** – Pflichtargument, wird in die Spalte `Name of labeler` geschrieben.
-- **Bildpfad-Auflösung**: Für jede Zeile wird das Bilder-Verzeichnis (Config-Eintrag `images_dir`, Standard `data/images/`, per `--images-dir` übersteuerbar) rekursiv durchsucht und der tatsächliche relative Pfad des Bildes als `datename` übernommen — die Labels passen damit immer zu dem, was die App anzeigt. Ein im Export enthaltener Ordnerpfad zählt nur, wenn er exakt existiert.
+- **`--labeler`** – Pflichtargument, wird in die Spalte `labeler` geschrieben.
+- **Bildpfad-Auflösung**: Für jede Zeile wird das Bilder-Verzeichnis (Config-Eintrag `images_dir`, Standard `data/images/`, per `--images-dir` übersteuerbar) rekursiv durchsucht und der tatsächliche relative Pfad des Bildes als `image_path` übernommen — die Labels passen damit immer zu dem, was die App anzeigt. Ein im Export enthaltener Ordnerpfad zählt nur, wenn er exakt existiert.
 - **Modalität**: Das Modalitätssegment im Dateinamen (`_VI_`/`_EL_`/`_UV_`) füllt die Spalten `uv`/`vi`/`el`; Mehrfachzeilen für dasselbe Bild werden gemerged (Vereinigung der Labels).
-- **Ausgaben**: Der Default-Zielpfad ist `<name>_converted.csv` neben der Quelldatei — `data/labels.csv` wird nur angefasst, wenn `--output` explizit darauf zeigt. Bestehende Zeilen des Ziels werden per `datename` aktualisiert, andere bleiben unangetastet.
+- **Ausgaben**: Der Default-Zielpfad ist `<name>_converted.csv` neben der Quelldatei — `data/labels.csv` wird nur angefasst, wenn `--output` explizit darauf zeigt. Bestehende Zeilen des Ziels werden per `image_path` aktualisiert, andere bleiben unangetastet.
 - **Fehler-Report**: Einträge, die nicht korrekt verarbeitet werden können (Bild fehlt oder Pfad mehrdeutig, Label nicht in `config.json` definiert, Modalität fehlt im Dateinamen, Labels leer), landen in `<output stem>_failed.csv` (Spalten `filename,labels,reason`) und werden zusätzlich auf der Konsole ausgegeben; der Exit-Code ist dann `1`.
 - `--dry-run` zeigt Zeilen und Report an, ohne zu schreiben.
 

@@ -13,7 +13,7 @@ import threading
 from collections.abc import Iterable
 
 # Fixed column prefix, exactly as required by the specification (§8.2).
-FIXED_COLUMNS = ["Datum", "Zeit", "Name of labeler", "datename"]
+FIXED_COLUMNS = ["date", "time", "labeler", "image_path"]
 # Required order of the modality columns for the standard configuration (§8.2).
 SPEC_MODALITY_COLUMNS = ["uv", "vi", "el"]
 
@@ -83,7 +83,7 @@ class LabelStore:
             return rows
         with open(self.csv_path, encoding="utf-8", newline="") as f:
             for raw in csv.DictReader(f):
-                filename = (raw.get("datename") or "").strip()
+                filename = (raw.get("image_path") or "").strip()
                 if not filename:
                     continue
                 rows[filename] = raw
@@ -177,10 +177,10 @@ class LabelStore:
         now: dt.datetime,
     ) -> dict[str, object]:
         row = {
-            "Datum": now.strftime("%Y-%m-%d"),
-            "Zeit": now.strftime("%H:%M:%S"),
-            "Name of labeler": labeler,
-            "datename": filename,
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S"),
+            "labeler": labeler,
+            "image_path": filename,
         }
         modality_col = modality_to_column(modality_code)
         for col in self.modality_cols:

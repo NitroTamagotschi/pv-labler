@@ -11,7 +11,7 @@ columns; each label token must match a label key from config.json.
 
 For every image the script searches the images directory (config.json
 `images_dir`, default data/images/) and stores the actual relative path
-of the image as datename, so the labels always match what the app
+of the image as image_path, so the labels always match what the app
 displays. An explicit directory part in the input file name is kept only
 when it matches an existing image.
 
@@ -22,12 +22,12 @@ failure report `<output stem>_failed.csv` with the columns
 filename, labels, reason. The script exits with status 1 when the
 report is non-empty.
 
-The output uses the labels.csv schema of labels.py: Datum, Zeit, Name of
-labeler, datename, uv, vi, el, then the label columns. By default the
+The output uses the labels.csv schema of labels.py: date, time, labeler,
+image_path, uv, vi, el, then the label columns. By default the
 output is written next to the input file as `<name>_converted.csv`;
 data/labels.csv is only touched when --output points at it, so the
 result can be reviewed and merged manually. Rows are upserted into the
-target CSV by datename: rows for other images are left untouched, rows
+target CSV by image_path: rows for other images are left untouched, rows
 present in the input are (re)written with the current date/time and
 labeler. The write is atomic (temp file + replace).
 """
@@ -49,7 +49,7 @@ DEFAULT_IMAGES_DIR = os.path.join(REPO_ROOT, "data", "images")
 # Same extensions the app scans for (images.py IMAGE_EXTENSIONS).
 IMAGE_EXTENSIONS = (".tif", ".tiff", ".jpg", ".jpeg", ".png")
 
-FIXED_COLUMNS = ["Datum", "Zeit", "Name of labeler", "datename"]
+FIXED_COLUMNS = ["date", "time", "labeler", "image_path"]
 # Required order of the modality columns for the standard configuration (§8.2).
 MODALITY_COLUMNS = ["uv", "vi", "el"]
 
@@ -191,7 +191,7 @@ def build_label_state(
 
 
 def build_row(
-    datename: str,
+    image_path: str,
     modality_column: str,
     labels: dict[str, int],
     labeler: str,
@@ -199,10 +199,10 @@ def build_row(
 ) -> dict[str, object]:
     """One labels.csv row with modality one-hot and label columns filled."""
     row = {
-        "Datum": now.strftime("%Y-%m-%d"),
-        "Zeit": now.strftime("%H:%M:%S"),
-        "Name of labeler": labeler,
-        "datename": datename,
+        "date": now.strftime("%Y-%m-%d"),
+        "time": now.strftime("%H:%M:%S"),
+        "labeler": labeler,
+        "image_path": image_path,
     }
     for column in MODALITY_COLUMNS:
         row[column] = 1 if column == modality_column else 0
@@ -211,18 +211,18 @@ def build_row(
 
 
 def read_existing(path: str) -> tuple[list[str], dict[str, dict[str, str]]]:
-    """Return (datename order, {datename: raw row}) of an existing CSV."""
+    """Return (image_path order, {image_path: raw row}) of an existing CSV."""
     order: list[str] = []
     rows: dict[str, dict[str, str]] = {}
     if not os.path.isfile(path):
         return order, rows
     with open(path, encoding="utf-8", newline="") as f:
         for raw in csv.DictReader(f):
-            datename = (raw.get("datename") or "").strip()
-            if datename and datename not in rows:
-                order.append(datename)
-            if datename:
-                rows[datename] = raw
+            image_path = (raw.get("image_path") or "").strip()
+            if image_path and image_path not in rows:
+                order.append(image_path)
+            if image_path:
+                rows[image_path] = raw
     return order, rows
 
 
@@ -290,7 +290,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--labeler",
         required=True,
-        help="name written into the 'Name of labeler' column of every converted row",
+        help="name written into the 'labeler' column of every converted row",
     )
     parser.add_argument(
         "--output",
@@ -357,8 +357,8 @@ def main() -> None:
     updated = [d for d in order if d in converted]
     added = [d for d in converted if d not in existing]
     rows: list[dict[str, object]] = []
-    for datename in order:
-        rows.append(converted.get(datename, {k: v for k, v in existing[datename].items()}))
+    for image_path in order:
+        rows.append(converted.get(image_path, {k: v for k, v in existing[image_path].items()}))
     rows.extend(converted[d] for d in added)
 
     print(

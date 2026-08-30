@@ -14,7 +14,7 @@ LABEL_KEYS = ["good"] + DEFECT_KEYS
 
 def _read_labels(path):
     with open(path, newline="", encoding="utf-8") as f:
-        return {row["datename"]: row for row in csv.DictReader(f)}
+        return {row["image_path"]: row for row in csv.DictReader(f)}
 
 
 def _read_ground_truth(path):
@@ -24,7 +24,7 @@ def _read_ground_truth(path):
         for row in csv.DictReader(f):
             for key in LABEL_KEYS:
                 row[key] = int(row[key])
-            truth[row["datename"]] = row
+            truth[row["image_path"]] = row
         return truth
 
 
@@ -66,7 +66,7 @@ def test_roundtrip_matches_ground_truth(login, live_server, save_and_wait):
     assert set(rows) == set(truth)
     for filename, expected in truth.items():
         row = rows[filename]
-        assert row["Name of labeler"] == "UI Tester", filename
+        assert row["labeler"] == "UI Tester", filename
         for key in LABEL_KEYS + ["uv", "vi", "el"]:
             assert row[key] == str(expected[key]), f"{filename}: column {key}"
 

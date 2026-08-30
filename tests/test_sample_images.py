@@ -72,10 +72,10 @@ def test_ground_truth_csv_schema_and_values(tmp_path):
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         assert reader.fieldnames == [
-            "Datum",
-            "Zeit",
-            "Name of labeler",
-            "datename",
+            "date",
+            "time",
+            "labeler",
+            "image_path",
             "uv",
             "vi",
             "el",
@@ -87,12 +87,12 @@ def test_ground_truth_csv_schema_and_values(tmp_path):
             "discoloration",
             "delamination",
         ]
-        rows = {row["datename"]: row for row in reader}
+        rows = {row["image_path"]: row for row in reader}
     truth = schedule.ground_truth_labels()
     assert set(rows) == set(truth)
     for filename, row in rows.items():
-        assert row["Datum"] == "" and row["Zeit"] == ""
-        assert row["Name of labeler"] == "GroundTruth"
+        assert row["date"] == "" and row["time"] == ""
+        assert row["labeler"] == "GroundTruth"
         for key in ["good", *schedule.DEFECT_VISIBILITY]:
             assert row[key] == str(truth[filename][key]), filename
 
@@ -107,8 +107,8 @@ def test_ground_truth_csv_modality_columns_match_config(tmp_path):
     columns = {m["code"]: modality_to_column(m["code"]) for m in app_config["modalities"]}
     with open(path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            info = parse_filename(row["datename"], filename_codes)
-            assert info is not None, row["datename"]
+            info = parse_filename(row["image_path"], filename_codes)
+            assert info is not None, row["image_path"]
             for code, column in columns.items():
                 expected = "1" if code == info.modality else "0"
-                assert row[column] == expected, row["datename"]
+                assert row[column] == expected, row["image_path"]
