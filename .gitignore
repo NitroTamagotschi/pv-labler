@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .pytest-tmp/
 .claude
+.temp
 
 # Laufzeitdaten (nicht versionieren)
 data/labels.csv
