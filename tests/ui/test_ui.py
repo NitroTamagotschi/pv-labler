@@ -1,5 +1,6 @@
 """Browser smoke tests for the main labeling workflow (Playwright)."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -150,7 +151,7 @@ def test_modal_original_view_with_window_controls(login, live_server):
     canvas = figure.locator("canvas")
     expect(canvas).to_be_visible()
     expect(figure.locator(".modal-image-stage img")).to_be_hidden()
-    expect(figure.locator(".modal-image-controls button")).to_have_text("Vorschau")
+    expect(figure.locator(".modal-image-controls .view-toggle")).to_have_text("Vorschau")
     expect(figure.locator(".modal-window-controls")).to_be_visible()
     expect(figure.locator(".modal-window-controls")).to_contain_text("Min")
     expect(figure.locator(".modal-window-controls")).to_contain_text("Max")
@@ -158,9 +159,11 @@ def test_modal_original_view_with_window_controls(login, live_server):
     expect(figure.locator(".modal-window-value")).to_have_count(2)
     expect(figure.locator(".modal-window-bits")).to_have_text("8-Bit")
     assert figure.evaluate("el => el.firstElementChild.tagName") == "FIGCAPTION"
-    expect(figure.locator(".modal-image-controls a")).to_have_attribute(
-        "download", "TEST_23-P09-B2_VI_Cell002.tif"
-    )
+    download_button = figure.locator(".modal-image-controls .download-btn")
+    expect(download_button).to_have_text("Download")
+    with page.expect_download() as download_info:
+        download_button.click()
+    assert download_info.value.suggested_filename == "TEST_23-P09-B2_VI_Cell002.tif"
     # the min/max window maps the brightest deterministic sample pixel to 255
     max_pixel = canvas.evaluate(
         """el => {
@@ -178,7 +181,7 @@ def test_modal_original_view_with_window_controls(login, live_server):
     sliders.nth(0).evaluate("el => { el.value = '0'; el.dispatchEvent(new Event('input')); }")
     expect(figure.locator(".modal-window-value").first).to_have_text("0")
     # switch back to the preview on demand
-    figure.locator(".modal-image-controls button").click()
+    figure.locator(".modal-image-controls .view-toggle").click()
     expect(canvas).to_have_count(0)
     expect(figure.locator(".modal-image-stage img")).to_be_visible()
 
@@ -207,6 +210,37 @@ def test_preview_window_panel_updates_config(login, live_server):
     assert '"preview_max": 26.0' in config_text
 
 
+def test_preview_window_panel_invert_persists(login, live_server):
+    """The panel checkbox persists the invert flag to config.json and reloads."""
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=UVF&tab=unclassified")
+    page.locator("#window-filter-trigger").click()
+    panel = page.locator("#window-filter-panel")
+    expect(panel).to_be_visible()
+    # reset first so the test is independent of the current config values
+    panel.locator("#window-reset").click()
+    expect(panel).to_be_hidden()  # fresh page after the reload
+    page.locator("#window-filter-trigger").click()
+    expect(panel).to_be_visible()
+    invert = panel.locator("#window-invert")
+    expect(invert).not_to_be_checked()
+    invert.check()  # triggers change -> save + reload
+    expect(panel).to_be_hidden()
+    config_text = Path(live_server["config_path"]).read_text(encoding="utf-8")
+    assert '"preview_invert": true' in config_text
+    # the fresh page renders the checkbox checked and marks the trigger
+    expect(page.locator("#window-filter-trigger")).to_contain_text("invertiert")
+    page.locator("#window-filter-trigger").click()
+    expect(page.locator("#window-filter-panel #window-invert")).to_be_checked()
+    # unchecking removes the flag again
+    page.locator("#window-filter-panel #window-invert").uncheck()
+    expect(page.locator("#window-filter-panel")).to_be_hidden()
+    config_text = Path(live_server["config_path"]).read_text(encoding="utf-8")
+    assert '"preview_invert": false' in config_text
+    expect(page.locator("#window-filter-trigger")).not_to_contain_text("invertiert")
+
+
 def test_modal_original_view_rgb(login, live_server):
     """The original view also renders multi-channel (RGB) TIFFs."""
     page = login
@@ -229,6 +263,40 @@ def test_modal_original_view_rgb(login, live_server):
         }"""
     )
     assert max_pixel == 255
+
+
+def test_modal_invert_per_figure_and_master(login, live_server):
+    """Each figure inverts on its own; the master button inverts all at once."""
+    page = login
+    base = live_server["base_url"]
+    page.goto(base + "/main?modality=EL&tab=unclassified")
+    card = page.locator('[data-filename="TEST_23-P09-B2_EL_Cell002.tif"]')
+    card.locator(".card-image").click()
+    figures = page.locator("#modal-body .modal-image")
+    expect(figures).to_have_count(3)  # VI + EL, UVF missing (no controls)
+    first = figures.nth(0)
+    second = figures.nth(1)
+    master = page.locator("#modal-invert-all")
+    expect(master).to_have_attribute("aria-pressed", "false")
+    # per-figure toggle: class, CSS filter on the stage and aria state
+    first.locator(".invert-toggle").click()
+    expect(first).to_have_class(re.compile(r"inverted"))
+    expect(first.locator(".modal-image-stage")).to_have_css("filter", "invert(1)")
+    expect(first.locator(".invert-toggle")).to_have_attribute("aria-pressed", "true")
+    expect(second).not_to_have_class(re.compile(r"inverted"))
+    expect(second.locator(".modal-image-stage")).not_to_have_css("filter", "invert(1)")
+    first.locator(".invert-toggle").click()  # back off
+    expect(first).not_to_have_class(re.compile(r"inverted"))
+    expect(first.locator(".modal-image-stage")).to_have_css("filter", "none")
+    # master switch: one click inverts both, the next click reverts both
+    master.click()
+    expect(first).to_have_class(re.compile(r"inverted"))
+    expect(second).to_have_class(re.compile(r"inverted"))
+    expect(master).to_have_attribute("aria-pressed", "true")
+    master.click()
+    expect(first).not_to_have_class(re.compile(r"inverted"))
+    expect(second).not_to_have_class(re.compile(r"inverted"))
+    expect(master).to_have_attribute("aria-pressed", "false")
 
 
 def test_cell_type_panel_multiselect(login, live_server):

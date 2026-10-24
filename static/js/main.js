@@ -198,6 +198,16 @@
     }
   }
 
+  // sets (or clears) the inverted display state of one modal figure; the
+  // CSS filter covers both the JPEG preview and the UTIF canvas
+  function setFigureInverted(figure, inverted) {
+    figure.classList.toggle("inverted", inverted);
+    const button = figure.querySelector(".invert-toggle");
+    if (button) {
+      button.setAttribute("aria-pressed", String(inverted));
+    }
+  }
+
   // toggles one modal image between the JPEG preview and a canvas rendering
   // of the original TIFF, decoded in the browser with UTIF and displayed
   // with min/max window sliders over the raw data range.
@@ -404,17 +414,33 @@
             controls.className = "modal-image-controls";
             const originalButton = document.createElement("button");
             originalButton.type = "button";
-            originalButton.className = "link-btn";
+            originalButton.className = "btn view-toggle";
             originalButton.textContent = "Original";
-            const downloadLink = document.createElement("a");
-            downloadLink.className = "link-btn";
-            downloadLink.textContent = "Download";
-            downloadLink.href = APP.originalUrl.replace(
-              "__FN__",
-              encodeURIComponent(member.filename)
+            const invertButton = document.createElement("button");
+            invertButton.type = "button";
+            invertButton.className = "btn invert-toggle";
+            invertButton.setAttribute("aria-pressed", "false");
+            invertButton.textContent = "Invertieren";
+            invertButton.addEventListener("click", () =>
+              setFigureInverted(figure, !figure.classList.contains("inverted"))
             );
-            downloadLink.setAttribute("download", member.filename.split("/").pop());
-            controls.append(originalButton, downloadLink);
+            const downloadButton = document.createElement("button");
+            downloadButton.type = "button";
+            downloadButton.className = "btn download-btn";
+            downloadButton.textContent = "Download";
+            downloadButton.addEventListener("click", () => {
+              // a programmatic download keeps the filename of the former link
+              const link = document.createElement("a");
+              link.href = APP.originalUrl.replace(
+                "__FN__",
+                encodeURIComponent(member.filename)
+              );
+              link.setAttribute("download", member.filename.split("/").pop());
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+            });
+            controls.append(originalButton, invertButton, downloadButton);
             figure.appendChild(controls);
             originalToggles.push(
               attachOriginalView(originalButton, stage, img, member.filename, figure)
@@ -432,6 +458,8 @@
         for (const toggle of originalToggles) {
           toggle();
         }
+        // fresh modal: no figure is inverted, so the master starts unpressed
+        document.getElementById("modal-invert-all").setAttribute("aria-pressed", "false");
         document.getElementById("group-modal").hidden = false;
       })
       .catch((error) => window.alert("Failed to load image group: " + error));
@@ -547,6 +575,18 @@
         closeGroupModal();
       }
     });
+    // master switch: one click inverts every figure, another click reverts
+    // all of them (when all are already inverted)
+    document.getElementById("modal-invert-all").addEventListener("click", () => {
+      const figures = [...document.querySelectorAll("#modal-body .modal-image")].filter(
+        (figure) => figure.querySelector(".modal-image-stage")
+      );
+      const on = figures.some((figure) => !figure.classList.contains("inverted"));
+      for (const figure of figures) {
+        setFigureInverted(figure, on);
+      }
+      document.getElementById("modal-invert-all").setAttribute("aria-pressed", String(on));
+    });
 
     // cell type filter panel
     const typeTrigger = document.getElementById("type-filter-trigger");
@@ -653,6 +693,9 @@
         maxInput.addEventListener("change", postFromInputs);
         document.getElementById("window-reset").addEventListener("click", () =>
           post({ code: APP.modality, reset: true })
+        );
+        document.getElementById("window-invert").addEventListener("change", (event) =>
+          post({ code: APP.modality, invert: event.target.checked })
         );
       }
     }

@@ -119,6 +119,41 @@ def test_window_changes_cache_file(generator):
     assert Path(windowed).exists()
 
 
+def test_invert_matches_complement(generator):
+    """Inverting complements the mapped 8-bit values on every mapping path."""
+    _, gen = generator
+    cases = [
+        np.arange(256, dtype=np.uint8).reshape(16, 16),  # uint8 passthrough
+        np.array([[0, 255], [65280, 30000]], dtype=np.uint16),  # high byte
+        np.array([[0.0, 0.5], [1.0, 0.25]], dtype=np.float32),  # float scale
+        np.array([[True, False], [False, True]]),  # boolean mask
+    ]
+    for data in cases:
+        assert np.array_equal(gen._to_uint8(data, invert=True), 255 - gen._to_uint8(data))
+    # the windowed path inverts after the window mapping
+    windowed = np.array([[1000, 4000], [26000, 0]], dtype=np.uint16)
+    assert np.array_equal(
+        gen._to_uint8(windowed, window=(4000.0, 26000.0), invert=True),
+        255 - gen._to_uint8(windowed, window=(4000.0, 26000.0)),
+    )
+
+
+def test_invert_changes_cache_file(generator):
+    """The invert flag is part of the cache key; False equals the default."""
+    images_dir, gen = generator
+    _write_tiff(images_dir, "23-P09-B1_EL_Cell001.tif", np.full((64, 64), 5000, dtype=np.uint16))
+    raw = gen.get_preview_path("23-P09-B1_EL_Cell001.tif")
+    inverted = gen.get_preview_path("23-P09-B1_EL_Cell001.tif", invert=True)
+    explicit_off = gen.get_preview_path("23-P09-B1_EL_Cell001.tif", invert=False)
+    windowed_inverted = gen.get_preview_path(
+        "23-P09-B1_EL_Cell001.tif", window=(4000.0, 26000.0), invert=True
+    )
+    assert raw != inverted
+    assert raw == explicit_off
+    assert inverted != windowed_inverted
+    assert Path(inverted).exists()
+
+
 def test_preview_from_subfolder(generator):
     images_dir, gen = generator
     sub = images_dir / "sub"

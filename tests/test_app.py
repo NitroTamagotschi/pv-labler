@@ -291,7 +291,7 @@ def test_preview_route(client):
 
 
 def test_preview_window_validation():
-    """Preview windows must be complete pairs with min < max."""
+    """Preview windows must be complete pairs with min < max and boolean invert."""
     modality = CONFIG["modalities"][0]
     others = CONFIG["modalities"][1:]
     with pytest.raises(ValueError):
@@ -306,6 +306,18 @@ def test_preview_window_validation():
                 ],
             }
         )
+    for bad_invert in (1, "yes", [True]):
+        with pytest.raises(ValueError):
+            _validate_config(
+                {**CONFIG, "modalities": [{**modality, "preview_invert": bad_invert}, *others]}
+            )
+    # invert alone (without a window) and False are both valid
+    _validate_config(
+        {**CONFIG, "modalities": [{**modality, "preview_invert": True}, *others]}
+    )
+    _validate_config(
+        {**CONFIG, "modalities": [{**modality, "preview_invert": False}, *others]}
+    )
 
 
 def test_preview_window_endpoint(client):
@@ -317,13 +329,49 @@ def test_preview_window_endpoint(client):
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     el = next(m for m in saved["modalities"] if m["code"] == "EL")
     assert (el["preview_min"], el["preview_max"]) == (1000.0, 20000.0)
-    assert client.application.config["PV_PREVIEW_WINDOWS"]["EL"] == (1000.0, 20000.0)
+    assert client.application.config["PV_PREVIEW_WINDOWS"]["EL"] == (1000.0, 20000.0, False)
     # reset removes the entry again
     res = client.post("/api/preview-window", json={"code": "EL", "reset": True})
     assert res.status_code == 200
     saved = json.loads(config_path.read_text(encoding="utf-8"))
     el = next(m for m in saved["modalities"] if m["code"] == "EL")
     assert "preview_min" not in el and "preview_max" not in el
+    assert "EL" not in client.application.config["PV_PREVIEW_WINDOWS"]
+
+
+def test_preview_window_endpoint_invert(client):
+    """The invert flag updates independently of the window and survives reset."""
+    config_path = Path(client.application.config["PV_CONFIG_PATH"])
+    client.post("/login", data={"name": "Max"})
+    # EL starts with a configured window: invert must keep it
+    res = client.post("/api/preview-window", json={"code": "EL", "invert": True})
+    assert res.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    el = next(m for m in saved["modalities"] if m["code"] == "EL")
+    assert (el["preview_min"], el["preview_max"], el["preview_invert"]) == (
+        4000.0,
+        30000.0,
+        True,
+    )
+    assert client.application.config["PV_PREVIEW_WINDOWS"]["EL"] == (4000.0, 30000.0, True)
+    # a window update must not drop the invert flag
+    res = client.post("/api/preview-window", json={"code": "EL", "min": 1000, "max": 20000})
+    assert res.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    el = next(m for m in saved["modalities"] if m["code"] == "EL")
+    assert el["preview_invert"] is True
+    # VI has no window: invert alone yields a (None, None, True) entry and
+    # the preview route keeps working with it
+    res = client.post("/api/preview-window", json={"code": "VI", "invert": True})
+    assert res.status_code == 200
+    assert client.application.config["PV_PREVIEW_WINDOWS"]["VI"] == (None, None, True)
+    assert client.get("/preview?file=23-P09-B1_VI_Cell001.tif").status_code == 200
+    # reset removes the window, the invert flag and the whole entry
+    res = client.post("/api/preview-window", json={"code": "EL", "reset": True})
+    assert res.status_code == 200
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    el = next(m for m in saved["modalities"] if m["code"] == "EL")
+    assert "preview_min" not in el and "preview_max" not in el and "preview_invert" not in el
     assert "EL" not in client.application.config["PV_PREVIEW_WINDOWS"]
 
 
@@ -340,6 +388,9 @@ def test_preview_window_rejects_invalid_input(client):
         == 400
     )
     assert client.post("/api/preview-window", json={"code": "EL"}).status_code == 400
+    # invert must be a real JSON boolean
+    assert client.post("/api/preview-window", json={"code": "EL", "invert": "true"}).status_code == 400
+    assert client.post("/api/preview-window", json={"code": "EL", "invert": 1}).status_code == 400
 
 
 def test_original_route(client):

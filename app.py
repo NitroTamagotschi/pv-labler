@@ -95,6 +95,11 @@ def _validate_config(config: dict) -> None:
             raise ValueError(
                 f"config.json: modality {code!r}: 'preview_min' must be < 'preview_max'"
             )
+        preview_invert = modality.get("preview_invert")
+        if preview_invert is not None and not isinstance(preview_invert, bool):
+            raise ValueError(
+                f"config.json: modality {code!r}: 'preview_invert' must be a boolean"
+            )
         codes.append(code)
         filename_codes.append(filename_code.lower())
     if len(set(codes)) != len(codes):
@@ -127,6 +132,21 @@ def _validate_config(config: dict) -> None:
     images_dir = config.get("images_dir")
     if images_dir is not None and (not isinstance(images_dir, str) or not images_dir.strip()):
         raise ValueError("config.json: 'images_dir' must be a non-empty string")
+
+
+def _preview_windows(config: dict) -> dict:
+    """Map modality codes to their preview settings (min, max, invert).
+
+    min/max are None when only the invert flag is configured; modalities
+    without any preview setting are omitted. Single source of truth for
+    create_app and the preview-window endpoint, and the repr of the values
+    doubles as the cache-busting preview URL signature.
+    """
+    return {
+        m["code"]: (m.get("preview_min"), m.get("preview_max"), bool(m.get("preview_invert")))
+        for m in config["modalities"]
+        if "preview_min" in m or "preview_invert" in m
+    }
 
 
 def _matches_tab(state: dict, tab: str, is_unclassified: bool) -> bool:
@@ -179,11 +199,7 @@ def create_app(
         images_dir, images.modality_filename_codes(config["modalities"]), log=app.logger.warning
     )
     app.config["PV_PREVIEWS"] = previews.PreviewGenerator(images_dir, previews_dir or PREVIEWS_DIR)
-    app.config["PV_PREVIEW_WINDOWS"] = {
-        m["code"]: (m["preview_min"], m["preview_max"])
-        for m in config["modalities"]
-        if "preview_min" in m
-    }
+    app.config["PV_PREVIEW_WINDOWS"] = _preview_windows(config)
 
     @app.route("/")
     def index() -> Response | str:
@@ -380,10 +396,12 @@ def create_app(
                     )
                     break
         preview_window = app.config["PV_PREVIEW_WINDOWS"].get(modality)
-        preview_window_min = preview_window[0] if preview_window else 0
-        preview_window_max = preview_window[1] if preview_window else preview_range
+        has_window = bool(preview_window and preview_window[0] is not None)
+        preview_window_min = preview_window[0] if has_window else 0
+        preview_window_max = preview_window[1] if has_window else preview_range
+        preview_invert = bool(preview_window and preview_window[2])
         preview_window_label = (
-            f"{preview_window_min:g} – {preview_window_max:g}" if preview_window else "Standard"
+            f"{preview_window_min:g} – {preview_window_max:g}" if has_window else "Standard"
         )
         if preview_range >= 65535:
             preview_bits = "16-Bit"
@@ -427,6 +445,7 @@ def create_app(
             preview_window_label=preview_window_label,
             preview_window_min=preview_window_min,
             preview_window_max=preview_window_max,
+            preview_invert=preview_invert,
             preview_range=preview_range,
             preview_bits=preview_bits,
         )
@@ -543,9 +562,13 @@ def create_app(
         # index: the index walks the whole image tree, which is far too slow
         # to repeat for every preview request of a large image set
         info = images.parse_filename(filename, app.config["PV_INDEX"].filename_codes)
-        window = app.config["PV_PREVIEW_WINDOWS"].get(info.modality) if info is not None else None
+        setting = (
+            app.config["PV_PREVIEW_WINDOWS"].get(info.modality) if info is not None else None
+        )
+        lo, hi, invert = setting if setting else (None, None, False)
+        window = (lo, hi) if lo is not None else None
         try:
-            cache_path = generator.get_preview_path(filename, window=window)
+            cache_path = generator.get_preview_path(filename, window=window, invert=invert)
             return send_file(cache_path, mimetype="image/jpeg")
         except (ValueError, OSError, previews.PreviewError) as exc:
             app.logger.warning("Preview request failed for %r: %s", filename, exc)
@@ -582,16 +605,28 @@ def create_app(
         if data.get("reset"):
             entry.pop("preview_min", None)
             entry.pop("preview_max", None)
+            entry.pop("preview_invert", None)
         else:
-            try:
-                lo = float(data["min"])
-                hi = float(data["max"])
-            except (KeyError, TypeError, ValueError):
-                return jsonify(ok=False, error="min and max are required"), 400
-            if hi <= lo:
-                return jsonify(ok=False, error="min must be < max"), 400
-            entry["preview_min"] = lo
-            entry["preview_max"] = hi
+            # the window and the invert flag update independently: posting
+            # one must not touch the other, and at least one is required
+            has_window = "min" in data or "max" in data
+            has_invert = "invert" in data
+            if has_window:
+                try:
+                    lo = float(data["min"])
+                    hi = float(data["max"])
+                except (KeyError, TypeError, ValueError):
+                    return jsonify(ok=False, error="min and max are required"), 400
+                if hi <= lo:
+                    return jsonify(ok=False, error="min must be < max"), 400
+                entry["preview_min"] = lo
+                entry["preview_max"] = hi
+            if has_invert:
+                if not isinstance(data["invert"], bool):
+                    return jsonify(ok=False, error="invert must be a boolean"), 400
+                entry["preview_invert"] = data["invert"]
+            if not has_window and not has_invert:
+                return jsonify(ok=False, error="min and max or invert are required"), 400
         try:
             _validate_config(new_config)
         except ValueError as exc:
@@ -612,11 +647,7 @@ def create_app(
                 pass
             raise
         app.config["PV_CONFIG"] = new_config
-        app.config["PV_PREVIEW_WINDOWS"] = {
-            m["code"]: (m["preview_min"], m["preview_max"])
-            for m in new_config["modalities"]
-            if "preview_min" in m
-        }
+        app.config["PV_PREVIEW_WINDOWS"] = _preview_windows(new_config)
         return jsonify(ok=True)
 
     return app

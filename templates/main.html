@@ -59,7 +59,7 @@
     </div>
     <div class="window-filter">
       <button type="button" class="type-filter-trigger" id="window-filter-trigger">
-        Preview-Window: {{ preview_window_label }} <span aria-hidden="true">▾</span>
+        Preview-Window: {{ preview_window_label }}{% if preview_invert %} (invertiert){% endif %} <span aria-hidden="true">▾</span>
       </button>
       <div class="window-filter-panel" id="window-filter-panel" hidden>
         {% if modality == 'all' %}
@@ -80,6 +80,10 @@
           <input type="number" id="window-max-input" class="window-number"
                  min="0" max="{{ preview_range }}" step="any"
                  value="{{ preview_window_max }}">
+        </label>
+        <label class="window-option">
+          <input type="checkbox" id="window-invert" {% if preview_invert %}checked{% endif %}>
+          Invertieren
         </label>
         <span class="window-bits" id="window-bits">{{ preview_bits }}</span>
         <button type="button" class="apply-btn" id="window-reset">Reset</button>
@@ -113,6 +117,7 @@
     <div class="modal" style="--modal-max-width: {{ modal_max_width }}px; --modal-max-height: {{ modal_max_height }}">
       <div class="modal-header">
         <h2 id="modal-title"></h2>
+        <button type="button" class="btn" id="modal-invert-all" aria-pressed="false">Alle invertieren</button>
         <button type="button" class="modal-close" id="modal-close" aria-label="Close">X</button>
       </div>
       <div class="modal-body" id="modal-body"></div>

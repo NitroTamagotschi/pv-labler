@@ -63,7 +63,7 @@ Dateiname: `config.json`
   "modalities": [
     { "code": "VI", "display_name": "VI", "preview_min": 0, "preview_max": 65535 },
     { "code": "EL", "display_name": "EL", "preview_min": 0, "preview_max": 30000 },
-    { "code": "UVF", "display_name": "UVF", "preview_min": 0, "preview_max": 45000 }
+    { "code": "UVF", "display_name": "UVF", "preview_min": 0, "preview_max": 45000, "preview_invert": false }
   ],
   "labels": {
     "good": { "key": "good", "display_name": "Good" },
@@ -84,6 +84,8 @@ Die Benutzeroberfläche, die Filter-Tabs, die Checkboxen und die CSV-Labelspalte
 Optional können `modal_max_width` und `modal_max_height` gesetzt werden: maximale Breite bzw. Höhe des Bildgruppen-Pop-ups in Pixeln — gemeint ist das Dialog-Fenster selbst, nicht die darin gezeigten Bilder (Breiten-Standard: 1100, Höhen-Standard: 90 % der Fensterhöhe; Minimum jeweils 200). Die Höhe übersteigt nie die Fensterhöhe. Die Bildgröße folgt daraus nur indirekt: Bilder füllen ihre Grid-Spalte im Fenster und sind nie breiter als das Fenster.
 
 Optional können pro Modalität `preview_min` und `preview_max` gesetzt werden (gemeinsam, `min < max`): ein lineares Anzeigefenster in Rohwerten für die JPEG-Vorschau von Ganzzahl-Daten, außerhalb des Fensters wird geklemmt. Das Fenster wird pro Bild auf dessen nativen Wertebereich geklemmt. Ohne Angabe werden 8-Bit-Werte unverändert übernommen und bei 16-Bit das High-Byte verwendet. Die Werte können zur Laufzeit über das Preview-Window-Panel der Oberfläche geändert werden; die Anwendung schreibt Änderungen in die `config.json` zurück.
+
+Optional kann pro Modalität `preview_invert` (boolesch) gesetzt werden: Die Vorschau wird invertiert, d. h. jeder auf 8 Bit gemappte Anzeigewert wird nach der Fenster-Abbildung komplementiert (`255 − Wert`). Die Option ist unabhängig vom Fenster und kann auch allein gesetzt werden; sie lässt sich ebenfalls über das Preview-Window-Panel ändern. Die Originaldateien bleiben unverändert.
 
 Optional kann `images_dir` gesetzt werden: ein absoluter Pfad zum Ordner mit den Quellbildern (statt `data/images/`). Der Ordner muss existieren und wird nicht automatisch angelegt. Die `image_path`-Werte in `labels.csv` bleiben relativ zu diesem Ordner.
 
@@ -158,7 +160,7 @@ Das Main Window enthält die folgenden Bereiche:
 4. Pop-up-Fenster zur Anzeige aller Modalitäten einer Bildgruppe.
 5. `Save`-Button oben rechts zum Speichern aller ungespeicherten Änderungen.
 6. `Cell type`-Filter-Panel zur Filterung auf einzelne Solarzellentypen.
-7. `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters der gewählten Modalität (schreibt in die `config.json`, siehe 3.3).
+7. `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters und der Invertierung der gewählten Modalität (schreibt in die `config.json`, siehe 3.3).
 8. Suchfeld zur Filterung der Galerie nach Dateinamen (siehe 6.4).
 
 ### 6.2 Dropdown: Bildmodalität
@@ -228,7 +230,8 @@ Beim Öffnen eines Bildes wird ein Pop-up-Fenster angezeigt.
 - Schließen-Schaltfläche `X`.
 - Die Bilder aller Modalitäten derselben Bildgruppe, nebeneinander oder responsiv untereinander.
 - Pro Bild die Kennzeichnung der Modalität oberhalb des Bildes, z. B. `VI`, `EL`, `UVF`.
-- Standardmäßig wird die Originaldatei angezeigt (siehe 10.3); unter jedem Bild stehen `Vorschau` (Wechsel zur JPEG-Vorschau) und `Download` (Originaldatei herunterladen).
+- Standardmäßig wird die Originaldatei angezeigt (siehe 10.3); unter jedem Bild stehen `Vorschau` (Wechsel zur JPEG-Vorschau), `Invertieren` (invertiert nur dieses Bild) und `Download` (Originaldatei herunterladen).
+- Im Kopfbereich des Pop-ups steht `Alle invertieren`: Sind bereits alle Bilder invertiert, werden alle zurückgesetzt; sonst werden alle Bilder invertiert. Die Invertierung im Pop-up ist flüchtig (nur Anzeige) und wirkt auf Vorschau und Originalansicht gleichermaßen.
 
 **Interaktion:**
 
@@ -355,7 +358,7 @@ Das Änderungslog wird ausschließlich ergänzt; bestehende Einträge dürfen ni
 - CSS für responsives Layout
 - JavaScript für unmittelbare UI-Aktualisierungen und das Speichern über den `Save`-Button bzw. `Strg+S` (AJAX) sowie den Bestätigungsdialog beim Verlassen
 - Modal/Pop-up für die Bildgruppenansicht mit synchronem Zoom und In-Browser-Dekodierung der Original-TIFFs (vendored UTIF-Bibliothek, kein CDN)
-- `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters (Regler und Zahleneingabe, schreibt über einen AJAX-Endpoint in die `config.json`)
+- `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters (Regler und Zahleneingabe) und der Invertierung (Checkbox), schreibt über einen AJAX-Endpoint in die `config.json`
 
 ### 10.3 Bildanzeige
 
@@ -363,9 +366,9 @@ Die Quelldateien liegen als `.tif` vor. Da TIFF-Dateien nicht in allen Browsern 
 
 Die Originaldateien dürfen durch die Vorschau-Erzeugung nicht verändert werden.
 
-Die Vorschau-Konvertierung findet ohne Normalisierung statt: 8-Bit-Daten werden unverändert übernommen, 16-Bit-Daten auf das High-Byte reduziert oder über das konfigurierte Fenster (siehe 3.3) gemappt. Vorschauen sind maximal 2048 px groß und werden pro Bilddatei und Fenster gecacht; das Fenster ist Teil des Cache-Schlüssels.
+Die Vorschau-Konvertierung findet ohne Normalisierung statt: 8-Bit-Daten werden unverändert übernommen, 16-Bit-Daten auf das High-Byte reduziert oder über das konfigurierte Fenster (siehe 3.3) gemappt; die konfigurierte Invertierung wird anschließend angewendet. Vorschauen sind maximal 2048 px groß und werden pro Bilddatei, Fenster und Invertierung gecacht; Fenster und Invertierung sind Teil des Cache-Schlüssels.
 
-Ergänzend wird die Originaldatei in der Bildgruppenansicht standardmäßig direkt im Browser angezeigt (Dekodierung per JavaScript, Anzeige mit Min/Max-Window-Reglern über den nativen Wertebereich des Bildes; Startwerte sind Min/Max der Bilddaten. Umschalten auf die JPEG-Vorschau ist möglich) und kann als Datei heruntergeladen werden.
+Ergänzend wird die Originaldatei in der Bildgruppenansicht standardmäßig direkt im Browser angezeigt (Dekodierung per JavaScript, Anzeige mit Min/Max-Window-Reglern über den nativen Wertebereich des Bildes; Startwerte sind Min/Max der Bilddaten. Umschalten auf die JPEG-Vorschau ist möglich) und kann als Datei heruntergeladen werden. Die Invertierung im Pop-up (`Invertieren` pro Bild bzw. `Alle invertieren`) ist ein rein clientseitiger CSS-Filter und wirkt in beiden Ansichten; sie wird nicht persistiert.
 
 Die Window-Regler legen Schwarz- und Weißpunkt der Anzeige fest: Werte unterhalb von `Min` werden schwarz, oberhalb von `Max` weiß dargestellt, Werte dazwischen linear gespreizt. Startzustand ist der volle Datenbereich des Bildes. Die Regler zeigen ihren aktuellen Wert und die Bittiefe des angezeigten Bildes an. Die Regler verändern ausschließlich die Anzeige, nicht die Bilddaten; gefundene Werte können über das Preview-Window-Panel des Hauptfensters in die `config.json` übernommen werden.
 
@@ -440,3 +443,5 @@ Die Implementierung gilt als funktionsfähig, wenn alle folgenden Kriterien erf�
 21. Breite und Höhe des Bildgruppen-Pop-ups (des Dialog-Fensters, nicht der Bilder selbst) folgen den optionalen Config-Werten `modal_max_width` und `modal_max_height`.
 22. Die Tastenkombination `Strg+S` speichert alle ungespeicherten Änderungen wie ein Klick auf `Save`; ohne ungespeicherte Änderungen passiert nichts und die Seite lädt nicht neu.
 23. Die Galerie zeigt zunächst höchstens 100 Karten und lädt beim Scrollen ans Ende automatisch weitere nach, bis alle Bilder der gewählten Ansicht erreichbar sind.
+24. Das `Preview-Window`-Panel invertiert über eine Checkbox die Vorschauen der gewählten Modalität und schreibt die Einstellung als `preview_invert` in die `config.json` zurück; die Galerie zeigt die Bilder invertiert an.
+25. Die Bildgruppenansicht bietet pro Bild einen `Invertieren`-Schalter und im Kopfbereich `Alle invertieren`, das alle Bilder auf einmal invertiert bzw. zurücksetzt; die Invertierung wirkt in Vorschau- und Originalansicht und wird nicht persistiert.

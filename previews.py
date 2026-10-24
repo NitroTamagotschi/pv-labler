@@ -77,37 +77,46 @@ class PreviewGenerator:
             raise ValueError("Invalid image filename")
         return source
 
-    def get_preview_path(self, filename: str, window: tuple[float, float] | None = None) -> str:
+    def get_preview_path(
+        self, filename: str, window: tuple[float, float] | None = None, invert: bool = False
+    ) -> str:
         """Return the path of the cached preview, generating it on first use.
 
         window optionally maps the raw data range (lo, hi) linearly onto the
         8-bit display; without it, wider integer data keeps its high byte.
+        invert optionally complements the mapped 8-bit values (255 - value).
         """
         source = self.resolve_source(filename)
         if not os.path.isfile(source):
             raise FileNotFoundError(source)
-        cache_path = os.path.join(self.previews_dir, self._cache_name(filename, source, window))
+        cache_path = os.path.join(
+            self.previews_dir, self._cache_name(filename, source, window, invert)
+        )
         if not os.path.isfile(cache_path):
             with self._locks[hash(cache_path) % len(self._locks)]:
                 if not os.path.isfile(cache_path):
-                    self._generate(source, cache_path, window)
+                    self._generate(source, cache_path, window, invert)
         return cache_path
 
-    def _cache_name(self, filename: str, source: str, window: tuple[float, float] | None) -> str:
-        """Return the cache filename keyed by filename, mtime, size and window."""
+    def _cache_name(
+        self, filename: str, source: str, window: tuple[float, float] | None, invert: bool
+    ) -> str:
+        """Return the cache filename keyed by filename, mtime, size, window and invert."""
         mtime = os.stat(source).st_mtime_ns
         digest = hashlib.sha256(
-            f"{filename}|{mtime}|{PREVIEW_MAX_SIZE}|{window}".encode()
+            f"{filename}|{mtime}|{PREVIEW_MAX_SIZE}|{window}|{invert}".encode()
         ).hexdigest()[:16]
         stem = "".join(
             c if c.isalnum() or c in "-_" else "_" for c in os.path.splitext(filename)[0]
         )
         return f"{stem}_{digest}.jpg"
 
-    def _generate(self, source: str, cache_path: str, window: tuple[float, float] | None) -> None:
+    def _generate(
+        self, source: str, cache_path: str, window: tuple[float, float] | None, invert: bool
+    ) -> None:
         """Write the cached JPEG preview for one source image (atomic replace)."""
         data = self._read_source(source)
-        image = Image.fromarray(self._to_uint8(data, window))
+        image = Image.fromarray(self._to_uint8(data, window, invert))
         image.thumbnail((PREVIEW_MAX_SIZE, PREVIEW_MAX_SIZE), Image.Resampling.LANCZOS)
         os.makedirs(self.previews_dir, exist_ok=True)
         # per-process and per-thread temp name: two app instances sharing one
@@ -147,7 +156,9 @@ class PreviewGenerator:
         except Exception as exc:
             raise PreviewError(f"Cannot read {os.path.basename(source)}: {exc}") from exc
 
-    def _to_uint8(self, data: np.ndarray, window: tuple[float, float] | None = None) -> np.ndarray:
+    def _to_uint8(
+        self, data: np.ndarray, window: tuple[float, float] | None = None, invert: bool = False
+    ) -> np.ndarray:
         """Convert image data to uint8 without any normalization.
 
         Only the conversion needed for display is applied: integer data
@@ -155,7 +166,8 @@ class PreviewGenerator:
         data keeps its high byte) or, when window (lo, hi) is given, is
         mapped linearly onto 0-255 with clipping outside the window. Float
         data (expected in the 0.0-1.0 range) is scaled by 255, and boolean
-        masks become 0/255.
+        masks become 0/255. invert finally complements the mapped values
+        (255 - value).
         """
         arr = np.asarray(data)
         if arr.size == 0:
@@ -165,9 +177,12 @@ class PreviewGenerator:
             arr = arr[:, :, :3]
         elif arr.ndim != 2:
             raise PreviewError(f"Unsupported image shape {arr.shape}")
+        # out stays None while a window collapses against the native range:
+        # the fall-through keeps the raw mapping below in that case
+        out = None
         if arr.dtype == np.bool_:
-            return arr.astype(np.uint8) * 255
-        if window is not None and arr.dtype.kind in "ui":
+            out = arr.astype(np.uint8) * 255
+        elif window is not None and arr.dtype.kind in "ui":
             lo, hi = window
             # clamp to the image's own raw range, so a window configured in
             # 16-bit units cannot crush 8-bit images (and vice versa)
@@ -176,14 +191,18 @@ class PreviewGenerator:
             lo = min(float(lo), hi)
             if hi > lo:
                 scaled = (arr.astype(np.float64) - lo) / (hi - lo)
-                return np.clip(scaled * 255.0, 0.0, 255.0).astype(np.uint8)
-            # the window collapses against the native range: fall through
-            # to the raw mapping below
-        if arr.dtype == np.uint8:
-            return np.ascontiguousarray(arr)
-        if arr.dtype.kind == "f":
-            return np.clip(arr * 255.0, 0.0, 255.0).astype(np.uint8)
-        if arr.dtype.kind == "i":
-            arr = arr.view(f"u{arr.dtype.itemsize}")  # reinterpret the same bits
-        shift = (arr.itemsize - 1) * 8
-        return (arr >> shift).astype(np.uint8)
+                out = np.clip(scaled * 255.0, 0.0, 255.0).astype(np.uint8)
+        if out is None:
+            if arr.dtype == np.uint8:
+                out = np.ascontiguousarray(arr)
+            elif arr.dtype.kind == "f":
+                out = np.clip(arr * 255.0, 0.0, 255.0).astype(np.uint8)
+            else:
+                if arr.dtype.kind == "i":
+                    arr = arr.view(f"u{arr.dtype.itemsize}")  # reinterpret the same bits
+                shift = (arr.itemsize - 1) * 8
+                out = (arr >> shift).astype(np.uint8)
+        if invert:
+            # no in-place ops: out may be a view into the source array
+            return (255 - out).astype(np.uint8)
+        return out

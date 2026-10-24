@@ -7,21 +7,24 @@
       "display_name": "VI",
       "filename_code": "VI",
       "preview_min": 0.0,
-      "preview_max": 255.0
+      "preview_max": 255.0,
+      "preview_invert": false
     },
     {
       "code": "EL",
       "display_name": "EL",
       "filename_code": "EL",
-      "preview_min": 0.0,
-      "preview_max": 255.0
+      "preview_min": 33.915,
+      "preview_max": 106.08,
+      "preview_invert": false
     },
     {
       "code": "UVF",
       "display_name": "UVF",
       "filename_code": "UV",
       "preview_min": 0.0,
-      "preview_max": 255.0
+      "preview_max": 255.0,
+      "preview_invert": false
     }
   ],
   "labels": {
