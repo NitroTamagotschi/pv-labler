@@ -1,4 +1,5 @@
 {
+  "images_dir": "C:/Software Projekte/Bachelorthesis/normalized_images",
   "modal_max_width": 1200,
   "modal_max_height": 1000,
   "modalities": [
@@ -7,23 +8,20 @@
       "display_name": "VI",
       "filename_code": "VI",
       "preview_min": 0.0,
-      "preview_max": 255.0,
+      "preview_max": 138.21,
       "preview_invert": false
     },
     {
       "code": "EL",
       "display_name": "EL",
-      "filename_code": "EL",
-      "preview_min": 33.915,
-      "preview_max": 106.08,
-      "preview_invert": false
+      "filename_code": "EL"
     },
     {
       "code": "UVF",
       "display_name": "UVF",
       "filename_code": "UV",
       "preview_min": 0.0,
-      "preview_max": 255.0,
+      "preview_max": 75.0,
       "preview_invert": false
     }
   ],

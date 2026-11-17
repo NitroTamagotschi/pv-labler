@@ -655,3 +655,324 @@ body {
   color: #6b7280;
   font-size: 0.9rem;
 }
+
+/* -- comparison mode (labels.csv vs. source CSVs) --------------------------- */
+
+.compare-filter {
+  position: relative;
+}
+
+.compare-panel {
+  min-width: 340px;
+}
+
+/* the trigger shows the tags of the selected sources; names are in its title */
+#compare-trigger .src-tag {
+  margin: -2px 0 -2px 2px;
+  vertical-align: middle;
+}
+
+.compare-hint {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.compare-hint code {
+  font-size: 0.78rem;
+}
+
+.type-option.disabled {
+  color: #9ca3af;
+  cursor: default;
+}
+
+/* in the comparison panel the actions close the list instead of heading it */
+.compare-actions {
+  border-bottom: none;
+  border-top: 1px solid #e5e7eb;
+  padding: 8px 0 0;
+  margin: 6px 0 0;
+}
+
+.tab.dim {
+  opacity: 0.55;
+}
+
+/* source tags A/B: one color per source, reused in legend, cards and stats */
+.src-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #7c3aed;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.src-tag.src-1 {
+  background: #0f766e;
+}
+
+.compare-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #d8dbe0;
+  font-size: 0.85rem;
+}
+
+.compare-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.legend-ref {
+  font-weight: 600;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.warn {
+  color: #b45309;
+}
+
+.seg {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.seg-label {
+  color: #6b7280;
+  margin-right: 4px;
+}
+
+.seg-btn {
+  padding: 3px 10px;
+  border: 1px solid #c4c9d1;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2328;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.seg-btn:hover {
+  background: #f3f4f6;
+}
+
+.seg-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.seg-btn .count {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+/* statistics panel */
+
+.compare-stats {
+  padding: 8px 20px;
+  background: #fff;
+  border-bottom: 1px solid #d8dbe0;
+  font-size: 0.85rem;
+}
+
+.compare-stats summary {
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.compare-stats summary .src-tag {
+  margin-left: 2px;
+}
+
+.stats-block h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 4px;
+  font-size: 0.9rem;
+}
+
+.stats-summary {
+  margin: 0 0 6px;
+}
+
+.stats-wrap {
+  overflow-x: auto;
+}
+
+.stats-table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid #eef0f3;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.stats-table th {
+  font-weight: 600;
+  color: #374151;
+  border-bottom-color: #d8dbe0;
+}
+
+.stats-table th:first-child,
+.stats-table td:first-child {
+  text-align: left;
+}
+
+.stats-table tr.muted td:last-child {
+  text-align: left;
+}
+
+.stats-table a,
+.stats-summary a {
+  color: #2563eb;
+}
+
+.stats-hint {
+  margin: 10px 0 4px;
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+/* comparison card: labeler checkbox plus one value column per source */
+
+.card.has-diff {
+  border-color: #ef4444;
+}
+
+.compare-labels .label-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(var(--src-count, 1), 24px);
+  align-items: center;
+  column-gap: 4px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+.compare-labels .label-head {
+  padding-bottom: 2px;
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+
+.compare-labels .label-head .src-tag {
+  justify-self: center;
+}
+
+.label-row.diff {
+  background: #fdecec;
+}
+
+.src-val {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #9aa1ac;
+  border-radius: 3px;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.src-val.v1 {
+  background: #7c3aed;
+  border-color: #7c3aed;
+}
+
+.src-val.src-1.v1 {
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.src-val.v1::before {
+  content: "✓";
+}
+
+.src-val.na {
+  border-color: transparent;
+  color: #9ca3af;
+}
+
+.src-val.na::before {
+  content: "–";
+}
+
+.src-val.diff {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626;
+}
+
+.src-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px 12px;
+  font-size: 0.78rem;
+}
+
+.src-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #4b5563;
+}
+
+.src-note summary {
+  cursor: pointer;
+  color: #374151;
+}
+
+.src-note summary .src-tag {
+  margin-right: 4px;
+}
+
+.src-note p {
+  margin: 4px 0 0;
+  color: #374151;
+  line-height: 1.35;
+}
+
+.badge-uncertain {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.72rem;
+  font-weight: 600;
+}

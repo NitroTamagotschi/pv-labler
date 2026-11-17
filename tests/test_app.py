@@ -1,5 +1,6 @@
 """Smoke tests for the Flask routes (app.py) with a small custom config."""
 
+import csv
 import json
 import re
 from pathlib import Path
@@ -530,8 +531,9 @@ def test_search_ui_preservation(client):
     """The search is kept in forms and tab links and dropped by the ✕ link."""
     client.post("/login", data={"name": "Max"})
     page = client.get("/main?modality=EL&tab=all&cell_type=23-P09-B1&q=Cell001")
-    # search input + hidden inputs in the modality form and the type panel
-    assert page.data.count(b'name="q" value="Cell001"') == 3
+    # search input + hidden inputs in the modality form, the type panel and
+    # the comparison panel
+    assert page.data.count(b'name="q" value="Cell001"') == 4
     # tab links carry the search
     assert (
         b'href="/main?modality=EL&amp;tab=unclassified&amp;cell_type=23-P09-B1&amp;q=Cell001"'
@@ -553,3 +555,268 @@ def test_search_empty_result(client):
     assert b'class="card"' not in page.data
     assert b'id="gallery-sentinel"' not in page.data
     assert b"No images match the current filter." in page.data
+
+
+# --- comparison mode ------------------------------------------------------------
+
+AI_COLUMNS = ["model", "image_path", "file_name", "good", "crack", "uncertain", "visual_status"]
+AI_ROOT = "/mnt/other-machine/normalized_images"
+
+
+def write_source(path, columns, rows):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(columns)
+        writer.writerows(rows)
+
+
+def ai_row(filename, good, crack, uncertain="0", note=""):
+    return ["gpt-test", f"{AI_ROOT}/{filename}", filename, good, crack, uncertain, note]
+
+
+@pytest.fixture
+def compare_client(client):
+    """Logged-in client with stored labels and an AI result CSV next to labels.csv.
+
+    Labels: B1_VI good, B1_EL crack, B2_VI good, B3_VI unlabeled. The AI agrees
+    on B1_VI (crack not assessed), sees no crack on B1_EL, flags a crack on B2_VI
+    (uncertain) and has one row without a matching image.
+    """
+    client.post("/login", data={"name": "Max"})
+    client.post(
+        "/api/save",
+        json={
+            "changes": {
+                "23-P09-B1_VI_Cell001.tif": {"good": 1},
+                "23-P09-B1_EL_Cell001.tif": {"crack": 1},
+                "23-P09-B2_VI_Cell002.tif": {"good": 1},
+            }
+        },
+    )
+    write_source(
+        Path(client.application.config["PV_COMPARE_DIR"]) / "ai.csv",
+        AI_COLUMNS,
+        [
+            ai_row("23-P09-B1_VI_Cell001.tif", "1", "", note="clean surface"),
+            ai_row("23-P09-B1_EL_Cell001.tif", "1", "0", note="no crack visible"),
+            ai_row("23-P09-B2_VI_Cell002.tif", "0", "1", uncertain="1", note="maybe a crack"),
+            ai_row("23-P09-B3_VI_Cell003.tif", "1", "0"),
+            ai_row("unknown_VI_Cell099.tif", "1", "0"),
+        ],
+    )
+    return client
+
+
+def tab_counts(html):
+    """Return {tab label: count text} of the rendered tab bar."""
+    pattern = r'<a class="tab[^"]*"[^>]*>\s*(.*?)\s*<span class="count">([^<]*)</span>'
+    return {label: count for label, count in re.findall(pattern, html, re.S)}
+
+
+def card_names(html):
+    return re.findall(r'<article class="card[^"]*" data-filename="([^"]+)"', html)
+
+
+def compare_trigger(html):
+    """Return the markup of the comparison panel's trigger button."""
+    return re.search(r'<button[^>]*id="compare-trigger".*?</button>', html, re.S).group(0)
+
+
+def test_compare_panel_lists_sources(compare_client):
+    """The panel offers the CSVs next to labels.csv; unusable files are disabled."""
+    data_dir = Path(compare_client.application.config["PV_COMPARE_DIR"])
+    write_source(data_dir / "failed.csv", ["filename", "labels", "reason"], [["a", "b", "c"]])
+    page = compare_client.get("/main").get_data(as_text=True)
+    assert re.search(r"Vergleich:\s+aus", compare_trigger(page))
+    assert 'name="src" value="ai.csv"' in page
+    assert 'value="labels.csv"' not in page  # the reference itself is never offered
+    assert 'name="src" value="failed.csv"' not in page
+    assert "failed.csv <span" in page and "keine Labelspalten" in page
+    # outside the comparison the normal tabs and cards are unchanged
+    assert "Unclassified" in tab_counts(page)
+    assert "card-compare" not in page
+
+
+def test_compare_dir_parameter(tmp_path):
+    """An explicit compare_dir replaces the directory of labels.csv."""
+    sources = tmp_path / "ai_results"
+    sources.mkdir()
+    write_source(sources / "run1.csv", ["file_name", "good"], [["x_VI_Cell001.tif", "1"]])
+    app = create_app(
+        config=CONFIG,
+        images_dir=str(tmp_path / "images"),
+        labels_csv=str(tmp_path / "labels.csv"),
+        change_log=str(tmp_path / "change_log.txt"),
+        previews_dir=str(tmp_path / "previews"),
+        compare_dir=str(sources),
+    )
+    with app.test_client() as client:
+        client.post("/login", data={"name": "Max"})
+        assert b'name="src" value="run1.csv"' in client.get("/main").data
+
+
+def test_compare_mode_tabs_and_counts(compare_client):
+    page = compare_client.get("/main?modality=all&src=ai.csv").get_data(as_text=True)
+    assert tab_counts(page) == {
+        "Abweichungen": "2",
+        "Good ≠": "2",
+        "Crack ≠": "2",
+        "Übereinstimmung": "1",
+        "Unsicher": "1",
+        "Nicht vergleichbar": "1",
+        "All": "4",
+    }
+    trigger = compare_trigger(page)
+    assert 'title="A = ai"' in trigger
+    assert '<span class="src-tag src-0">A</span>' in trigger
+    # the differences tab is the default and lists the deviating images
+    assert re.search(r'class="tab active"[^>]*>\s*Abweichungen', page)
+    assert sorted(card_names(page)) == ["23-P09-B1_EL_Cell001.tif", "23-P09-B2_VI_Cell002.tif"]
+    assert page.count("card-compare has-diff") == 2
+
+
+def test_compare_tabs_filter_images(compare_client):
+    def cards(query):
+        page = compare_client.get(f"/main?modality=all&src=ai.csv&{query}")
+        return sorted(card_names(page.get_data(as_text=True)))
+
+    assert cards("tab=cmp-agree") == ["23-P09-B1_VI_Cell001.tif"]
+    assert cards("tab=cmp-uncertain") == ["23-P09-B2_VI_Cell002.tif"]
+    # unlabeled in labels.csv: shown, but not compared
+    assert cards("tab=cmp-none") == ["23-P09-B3_VI_Cell003.tif"]
+    assert len(cards("tab=all")) == 4
+    # label tab with direction filter: who set the label
+    assert cards("tab=crack") == ["23-P09-B1_EL_Cell001.tif", "23-P09-B2_VI_Cell002.tif"]
+    assert cards("tab=crack&only=labeler") == ["23-P09-B1_EL_Cell001.tif"]
+    assert cards("tab=crack&only=source") == ["23-P09-B2_VI_Cell002.tif"]
+    # an invalid direction or a direction on a non-label tab is ignored
+    assert cards("tab=crack&only=sideways") == cards("tab=crack")
+    assert cards("tab=cmp-diff&only=labeler") == cards("tab=cmp-diff")
+    # a normal-mode tab falls back to the differences tab
+    assert cards("tab=unclassified") == cards("tab=cmp-diff")
+
+
+def test_compare_direction_links(compare_client):
+    page = compare_client.get("/main?modality=all&src=ai.csv&tab=crack&only=labeler")
+    html = page.get_data(as_text=True)
+    assert "Labeler ✓ · A ✗ <span" in html
+    assert "Labeler ✗ · A ✓ <span" in html
+    assert re.search(r'class="seg-btn active" href="[^"]*only=labeler">Labeler ✓ · A ✗', html)
+    # tab links drop the direction, which only belongs to the active label tab
+    assert 'href="/main?modality=all&amp;tab=good&amp;src=ai.csv"' in html
+
+
+def test_compare_card_markup(compare_client):
+    html = compare_client.get("/main?modality=all&src=ai.csv&tab=all").get_data(as_text=True)
+    card = re.search(
+        r'<article[^>]*data-filename="23-P09-B1_EL_Cell001.tif">(.*?)</article>', html, re.S
+    ).group(1)
+    # the labeler's checkbox stays editable; the source value sits next to it
+    assert re.search(r'<div class="label-row diff" data-key="good">', card)
+    assert re.search(r'class="src-val src-0 v1 diff"\s+data-v="1"', card)  # AI: good
+    assert re.search(r'class="src-val src-0 v0 diff"\s+data-v="0"', card)  # AI: no crack
+    assert "no crack visible" in card
+    agree = re.search(
+        r'<article[^>]*data-filename="23-P09-B1_VI_Cell001.tif">(.*?)</article>', html, re.S
+    ).group(1)
+    # crack was not assessed: no difference, rendered as "–"
+    assert re.search(r'class="src-val src-0 na"\s+data-v=""', agree)
+    assert "diff" not in agree
+    uncertain = re.search(
+        r'<article[^>]*data-filename="23-P09-B2_VI_Cell002.tif">(.*?)</article>', html, re.S
+    ).group(1)
+    assert 'class="badge-uncertain"' in uncertain
+
+
+def test_compare_statistics(compare_client):
+    html = compare_client.get("/main?modality=all&src=ai.csv").get_data(as_text=True)
+    summary = re.search(r"<summary>Statistik(.*?)</summary>", html, re.S).group(1)
+    assert "33.3 % übereinstimmend (1 von 3)" in summary
+    assert "ohne Label in labels.csv: 1" in html
+    assert "unsicher: 1" in html
+    assert "1 Zeilen ohne passendes Bild" in html  # unknown_VI_Cell099.tif
+    assert "gpt-test" in html  # model column in the legend
+    # confusion cells link to the matching gallery view
+    assert 'href="/main?modality=all&amp;tab=crack&amp;src=ai.csv&amp;only=labeler">1</a>' in html
+    assert 'href="/main?modality=all&amp;tab=crack&amp;src=ai.csv&amp;only=source">1</a>' in html
+    # the statistics follow the modality filter: only EL Cell001 is compared
+    el = compare_client.get("/main?modality=EL&src=ai.csv").get_data(as_text=True)
+    assert "0.0 % übereinstimmend (0 von 1)" in el
+
+
+def test_compare_rejects_unknown_sources(compare_client):
+    """Only files the panel offers can be selected; others fall back to normal mode."""
+    data_dir = Path(compare_client.application.config["PV_COMPARE_DIR"])
+    write_source(data_dir / "failed.csv", ["filename", "labels", "reason"], [["a", "b", "c"]])
+    for src in ("labels.csv", "../config.json", "failed.csv", "missing.csv", ""):
+        page = compare_client.get("/main", query_string={"src": src}).get_data(as_text=True)
+        assert "Unclassified" in tab_counts(page), src
+        assert "Abweichungen" not in page, src
+
+
+def test_compare_state_is_kept(monkeypatch, compare_client):
+    """Forms, links, the sentinel and /api/cards carry the comparison along."""
+    monkeypatch.setattr(app_module, "GALLERY_BATCH", 1)
+    html = compare_client.get("/main?modality=all&src=ai.csv&tab=all&q=23").get_data(as_text=True)
+    # hidden inputs in the modality, search and cell-type forms
+    assert html.count('<input type="hidden" name="src" value="ai.csv">') == 3
+    assert re.search(r'name="src" value="ai.csv" checked', html)  # panel checkbox
+    assert re.search(r'data-query="[^"]*src=ai.csv[^"]*"', html)
+    assert 'href="/main?modality=all&amp;tab=cmp-diff&amp;q=23&amp;src=ai.csv"' in html  # tab link
+    assert 'class="search-clear" href="/main?modality=all&amp;tab=all&amp;src=ai.csv"' in html
+    # ending the comparison keeps the other filters
+    assert 'id="compare-clear" href="/main?modality=all&amp;tab=all&amp;q=23"' in html
+    data = compare_client.get("/api/cards?modality=all&src=ai.csv&tab=all&q=23&offset=1").get_json()
+    assert data["ok"] and data["count"] == 1 and data["remaining"] == 2
+    assert "card-compare" in data["html"]
+    assert "src-val" in data["html"]
+
+
+def test_compare_two_sources_and_scope(compare_client):
+    data_dir = Path(compare_client.application.config["PV_COMPARE_DIR"])
+    columns = ["labeler", "image_path", "good", "crack"]
+    # B agrees with labels.csv everywhere
+    write_source(
+        data_dir / "second.csv",
+        columns,
+        [
+            ["Eva", "23-P09-B1_VI_Cell001.tif", "1", "0"],
+            ["Eva", "23-P09-B1_EL_Cell001.tif", "0", "1"],
+            ["Eva", "23-P09-B2_VI_Cell002.tif", "1", "0"],
+        ],
+    )
+    write_source(data_dir / "third.csv", columns, [["Udo", "23-P09-B1_VI_Cell001.tif", "1", "0"]])
+    base = "/main?modality=all&src=ai.csv&src=second.csv"
+
+    def differences(query):
+        page = compare_client.get(base + query).get_data(as_text=True)
+        return tab_counts(page)["Abweichungen"]
+
+    html = compare_client.get(base + "&src=third.csv").get_data(as_text=True)
+    # at most two sources are used at the same time
+    assert html.count('<input type="hidden" name="src"') == 6
+    assert '<input type="hidden" name="src" value="third.csv">' not in html
+    assert not re.search(r'name="src" value="third.csv" checked', html)
+    assert 'title="A = ai&#10;B = second"' in compare_trigger(html)
+    assert 'class="src-tag src-1"' in html
+    assert "A oder B" in html
+    # any source: B1_EL and B2_VI differ from A; B agrees everywhere
+    assert differences("") == "2"
+    assert differences("&scope=ai.csv") == "2"
+    assert differences("&scope=second.csv") == "0"
+    assert differences("&scope=nope") == "2"  # unknown scope: any source
+
+
+def test_compare_mode_saving(compare_client):
+    """Labels saved in the comparison mode land in labels.csv; the source stays as is."""
+    source = Path(compare_client.application.config["PV_COMPARE_DIR"]) / "ai.csv"
+    before = source.read_bytes()
+    res = compare_client.post(
+        "/api/save", json={"changes": {"23-P09-B1_EL_Cell001.tif": {"good": 1}}}
+    )
+    assert res.status_code == 200
+    html = compare_client.get("/main?modality=all&src=ai.csv").get_data(as_text=True)
+    # B1_EL now agrees with the AI (good, no crack)
+    assert card_names(html) == ["23-P09-B2_VI_Cell002.tif"]
+    assert tab_counts(html)["Übereinstimmung"] == "2"
+    assert source.read_bytes() == before

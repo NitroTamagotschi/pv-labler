@@ -7,6 +7,12 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+  {#- comparison filters every filter form carries along (empty outside the comparison) -#}
+  {% macro compare_hidden() -%}
+    {%- for s in src_ids %}<input type="hidden" name="src" value="{{ s }}">{% endfor -%}
+    {%- if scope_id %}<input type="hidden" name="scope" value="{{ scope_id }}">{% endif -%}
+    {%- if only %}<input type="hidden" name="only" value="{{ only }}">{% endif -%}
+  {%- endmacro %}
   <header class="topbar">
     <h1>PV Labeling Tool</h1>
     <form method="get" action="{{ url_for('main') }}" class="modality-form">
@@ -20,6 +26,7 @@
       <input type="hidden" name="tab" value="{{ tab }}">
       {% for t in selected_types %}<input type="hidden" name="cell_type" value="{{ t }}">{% endfor %}
       <input type="hidden" name="q" value="{{ search }}">
+      {{ compare_hidden() }}
     </form>
     <form method="get" action="{{ url_for('main') }}" class="search-form" role="search">
       <input type="search" name="q" value="{{ search }}"
@@ -29,6 +36,7 @@
       <input type="hidden" name="modality" value="{{ modality }}">
       <input type="hidden" name="tab" value="{{ tab }}">
       {% for t in selected_types %}<input type="hidden" name="cell_type" value="{{ t }}">{% endfor %}
+      {{ compare_hidden() }}
       <button type="submit" class="apply-btn">Suchen</button>
       {% if search %}
       <a class="search-clear" href="{{ clear_href }}" title="Suche zurücksetzen"
@@ -55,6 +63,7 @@
         <input type="hidden" name="modality" value="{{ modality }}">
         <input type="hidden" name="tab" value="{{ tab }}">
         <input type="hidden" name="q" value="{{ search }}">
+        {{ compare_hidden() }}
       </form>
     </div>
     <div class="window-filter">
@@ -90,6 +99,40 @@
         {% endif %}
       </div>
     </div>
+    <div class="compare-filter">
+      <button type="button" class="type-filter-trigger" id="compare-trigger"
+              title="{% if compare %}{% for s in compare.legend %}{{ s.tag }} = {{ s.name }}{% if not loop.last %}&#10;{% endif %}{% endfor %}{% else %}Labels mit einer weiteren CSV (z. B. KI-Ergebnis) vergleichen{% endif %}">
+        Vergleich:
+        {% if compare %}{% for s in compare.legend %}<span class="src-tag src-{{ s.index }}">{{ s.tag }}</span>{% endfor %}{% else %}aus{% endif %}
+        <span aria-hidden="true">▾</span>
+      </button>
+      <form method="get" action="{{ url_for('main') }}" class="type-filter-panel compare-panel"
+            id="compare-panel" data-max="{{ max_compare_sources }}" hidden>
+        <p class="compare-hint">CSV-Dateien aus <code>{{ compare_dir_label }}</code> – bis zu {{ max_compare_sources }} gleichzeitig mit labels.csv vergleichen.</p>
+        {% for f in compare_files %}
+          {% if f.error %}
+          <div class="type-option disabled" title="{{ f.error }}">
+            <input type="checkbox" disabled> {{ f.id }} <span class="count">{{ f.error }}</span>
+          </div>
+          {% else %}
+          <label class="type-option">
+            <input type="checkbox" name="src" value="{{ f.id }}" {% if f.id in src_ids %}checked{% endif %}>
+            {{ f.id }}
+          </label>
+          {% endif %}
+        {% else %}
+          <p class="compare-hint">Keine CSV-Dateien gefunden.</p>
+        {% endfor %}
+        <div class="type-filter-actions compare-actions">
+          {% if compare %}<a class="link-btn" id="compare-clear" href="{{ compare_clear_href }}">Vergleich beenden</a>{% endif %}
+          <button type="submit" class="apply-btn">Übernehmen</button>
+        </div>
+        <input type="hidden" name="modality" value="{{ modality }}">
+        <input type="hidden" name="tab" value="{{ tab }}">
+        {% for t in selected_types %}<input type="hidden" name="cell_type" value="{{ t }}">{% endfor %}
+        <input type="hidden" name="q" value="{{ search }}">
+      </form>
+    </div>
     <button type="button" id="save-btn" class="save-btn" disabled title="Save labels (Ctrl+S)">Save</button>
     <div class="user-box">
       <span>{{ user }}</span>
@@ -99,11 +142,114 @@
 
   <nav class="tabs">
     {% for t in tabs %}
-      <a class="tab {% if t.key == tab %}active{% endif %}" href="{{ t.href }}">
+      <a class="tab {% if t.key == tab %}active{% endif %}{% if t.dim %} dim{% endif %}" href="{{ t.href }}"
+         {%- if t.title %} title="{{ t.title }}"{% endif %}>
         {{ t.label }} <span class="count">{{ t.count }}</span>
       </a>
     {% endfor %}
   </nav>
+
+  {% if compare %}
+  <section class="compare-bar" aria-label="Vergleich">
+    <div class="compare-legend">
+      <span class="legend-item"><span class="legend-ref">Labeler</span> labels.csv</span>
+      {% for s in compare.legend %}
+      <span class="legend-item">
+        <span class="src-tag src-{{ s.index }}">{{ s.tag }}</span>
+        {{ s.name }}{% if s.detail %} <span class="muted">({{ s.detail }})</span>{% endif %}
+        <span class="muted">· {{ s.matched }} Bilder zugeordnet</span>
+        {%- if s.unmatched %}
+        <span class="warn" title="{{ s.unmatched_samples|join('\n') }}">· {{ s.unmatched }} Zeilen ohne passendes Bild</span>
+        {%- endif %}
+        {%- if s.duplicates %}
+        <span class="warn" title="Bei mehreren Zeilen für dasselbe Bild gilt die letzte">· {{ s.duplicates }} doppelte Zeilen</span>
+        {%- endif %}
+      </span>
+      {% endfor %}
+    </div>
+    {% if compare.scope_links %}
+    <div class="seg" role="group" aria-label="Abweichung zu">
+      <span class="seg-label">Abweichung zu</span>
+      {% for link in compare.scope_links %}
+      <a class="seg-btn{% if link.active %} active{% endif %}" href="{{ link.href }}"
+         {%- if link.title %} title="{{ link.title }}"{% endif %}>{{ link.label }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if compare.only_links %}
+    <div class="seg" role="group" aria-label="Richtung">
+      <span class="seg-label">Richtung</span>
+      {% for link in compare.only_links %}
+      <a class="seg-btn{% if link.active %} active{% endif %}" href="{{ link.href }}">{{ link.label }} <span class="count">{{ link.count }}</span></a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+  <details class="compare-stats" id="compare-stats">
+    <summary>Statistik
+      {%- for st in compare.stats %} · <span class="src-tag src-{{ st.index }}">{{ st.tag }}</span>
+      {{ st.stats.agreement|pct }} übereinstimmend ({{ st.stats.agree }} von {{ st.stats.compared }})
+      {%- endfor %}
+    </summary>
+    {% for st in compare.stats %}
+    <div class="stats-block">
+      <h3><span class="src-tag src-{{ st.index }}">{{ st.tag }}</span> {{ st.name }}</h3>
+      <p class="stats-summary">
+        Verglichen: {{ st.stats.compared }} Bilder ·
+        <a href="{{ st.agree_href }}">übereinstimmend: {{ st.stats.agree }}</a> ({{ st.stats.agreement|pct }}) ·
+        <a href="{{ st.diff_href }}">mit Abweichung: {{ st.stats.compared - st.stats.agree }}</a>
+        {%- if st.stats.unlabeled %} · ohne Label in labels.csv: {{ st.stats.unlabeled }}{% endif %}
+        {%- if st.stats.missing %} · kein Ergebnis: {{ st.stats.missing }}{% endif %}
+        {%- if st.stats.invalid %} · ungültig: {{ st.stats.invalid }}{% endif %}
+        {%- if st.stats.uncertain %} · unsicher: {{ st.stats.uncertain }}{% endif %}
+      </p>
+      <div class="stats-wrap">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th title="Bilder, bei denen beide Seiten das Label bewertet haben">bewertet</th>
+              <th>beide ✓</th>
+              <th>Labeler ✓ · {{ st.tag }} ✗</th>
+              <th>Labeler ✗ · {{ st.tag }} ✓</th>
+              <th>beide ✗</th>
+              <th>Übereinstimmung</th>
+              <th title="Cohens Kappa">κ</th>
+              <th>Precision</th>
+              <th>Recall</th>
+              <th>F1</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in st.rows %}{% set c = row.counts %}
+            <tr{% if not c.n %} class="muted"{% endif %}>
+              <td>{{ row.label }}</td>
+              {% if c.n %}
+              <td>{{ c.n }}</td>
+              <td>{{ c.tp }}</td>
+              <td>{% if c.fn %}<a href="{{ row.fn_href }}">{{ c.fn }}</a>{% else %}0{% endif %}</td>
+              <td>{% if c.fp %}<a href="{{ row.fp_href }}">{{ c.fp }}</a>{% else %}0{% endif %}</td>
+              <td>{{ c.tn }}</td>
+              <td>{{ c.agreement|pct }}</td>
+              <td>{{ c.kappa|dec }}</td>
+              <td>{{ c.precision|pct }}</td>
+              <td>{{ c.recall|pct }}</td>
+              <td>{{ c.f1|pct }}</td>
+              {% else %}
+              <td colspan="10">nicht bewertet</td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+    <p class="stats-hint">Grundlage: alle Bilder der aktuellen Auswahl (Modalität, Cell type, Suche), unabhängig vom Tab.
+      Gezählt werden nur Bilder mit Label in labels.csv und nur Labels, die die Quelle bewertet hat.
+      Precision, Recall und F1 mit dem Labeler als Referenz.</p>
+  </details>
+  {% endif %}
 
   <main class="gallery">
     {% include "cards.html" %}

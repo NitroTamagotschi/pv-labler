@@ -33,6 +33,7 @@ uv run python scripts/create_sample_images.py
 5. Der letzte Tab `All` zeigt alle Bilder der gewählten Modalität unabhängig vom Labelstatus. Die Galerie lädt Karten in Schüben (zunächst 100; beim Scrollen ans Ende kommen automatisch weitere dazu), damit auch sehr große Bildmengen flüssig bedienbar bleiben.
 6. Klick auf Vorschaubild oder Dateinamen öffnet das Pop-up mit allen Modalitäten der Bildgruppe.
 7. Im Pop-up wird standardmäßig das Original-TIFF direkt im Browser angezeigt (Dekodierung per UTIF, mit Min/Max-Reglern für den Dynamikbereich). Mausrad zoomt in alle Bilder synchron (Ziehen verschiebt, Doppelklick setzt zurück). Über `Vorschau` wechselt man zur JPEG-Vorschau, über `Download` lädt man die Originaldatei herunter. `Invertieren` invertiert jeweils ein Bild, `Alle invertieren` im Kopfbereich alle Bilder auf einmal (bzw. setzt alle zurück, wenn bereits alle invertiert sind); die Invertierung ist flüchtig und wirkt in Vorschau- und Originalansicht.
+8. Über `Vergleich` in der Kopfzeile lassen sich die gespeicherten Labels mit bis zu zwei weiteren CSV-Dateien vergleichen, z. B. mit den Ergebnissen einer KI (siehe [Vergleichsmodus](#vergleichsmodus)).
 
 ### Min/Max-Regler der Original-Ansicht
 
@@ -43,6 +44,33 @@ Die zwei Regler unter jedem Original-Bild legen fest, welcher Ausschnitt des Roh
 - `Reset` – zurück zum vollen Datenbereich des Bildes.
 
 Die Regler zeigen ihren aktuellen Wert direkt am Label an; daneben steht die **Bittiefe** des geöffneten Bildes (`8-Bit`/`16-Bit`/`32-Bit`). Der Startzustand ist der volle Datenbereich (Min = kleinster, Max = größter Messwert) — die neutrale Darstellung, die auch die JPEG-Vorschau zeigt. Einstellbar ist der gesamte native Wertebereich des Bildes (8-Bit: 0–255, 16-Bit: 0–65535, Float: 0–1) — z. B. Min=0/Max=255 für die rohe 1:1-Darstellung, wie sie die Windows-Fotoanzeige zeigt. Das **Fenster verengen erhöht den Kontrast**: Kleine Helligkeitsunterschiede innerhalb des gewählten Bereichs werden sichtbar. Das **Fenster verschieben** hellt dunkle Bereiche gezielt auf bzw. dunkelt helle ab — z. B. um in dunkle EL-Aufnahmen „hineinzuleuchten". Die Regler verändern ausschließlich die Anzeige; die Bilddaten und die gespeicherten Dateien bleiben unangetastet. Gefundene Werte lassen sich über das `Preview-Window`-Panel im Hauptmenü in die `config.json` übernehmen.
+
+### Vergleichsmodus
+
+Der Vergleichsmodus stellt die Labels aus `labels.csv` (in der Oberfläche „Labeler“) den Ergebnissen einer oder zweier weiterer CSV-Dateien gegenüber – typischerweise KI-Ergebnissen wie `data/results_taxonomy gpt-6.1-sol.csv`.
+
+- **Quellen wählen:** Das Panel `Vergleich` listet alle `*.csv`-Dateien direkt in `data/` (ohne Unterordner); `labels.csv` selbst wird nie angeboten. Bis zu zwei Dateien ankreuzen und `Übernehmen` – der Vergleich ist aktiv, solange mindestens eine Quelle gewählt ist, `Vergleich beenden` schaltet zurück. Dateien ohne passende Spalten erscheinen ausgegraut mit Begründung. Die Auswahl steht wie die übrigen Filter in der URL und bleibt beim Speichern sowie beim Wechsel von Modalität, Zelltyp und Suche erhalten.
+- **Legende:** Die Quellen heißen in der Oberfläche `A` und `B`. Unter den Tabs stehen Dateiname, Modell bzw. Labeler und die Zahl der zugeordneten Bilder, ggf. mit Warnung bei Zeilen ohne passendes Bild oder doppelten Zeilen.
+- **Tabs:** `Abweichungen` (mindestens ein bewertetes Label weicht ab) · `<Label> ≠` je Label (genau dieses Label weicht ab; `–`, wenn die Quelle es in der aktuellen Auswahl nicht bewertet hat) · `Übereinstimmung` (alle bewerteten Labels stimmen überein) · `Unsicher` (die Quelle hat ihr Ergebnis als unsicher markiert; nur bei vorhandener Spalte `uncertain`) · `Nicht vergleichbar` (Bild in `labels.csv` noch ohne Label oder ohne gültiges Ergebnis der Quelle) · `All`.
+- **Richtung:** In einem Label-Tab trennt `Richtung` die Abweichungen nach Seite: `Labeler ✓ · A ✗` (nur der Labeler hat das Label gesetzt) bzw. `Labeler ✗ · A ✓` (nur die Quelle).
+- **Zwei Quellen:** `Abweichung zu` beschränkt die Tabs auf eine Quelle; `A oder B` (Standard) zeigt Abweichungen zu mindestens einer der beiden.
+- **Karten:** Neben jeder Checkbox des Labelers steht pro Quelle deren Wert (`✓` gesetzt, leeres Kästchen nicht gesetzt, `–` nicht bewertet). Abweichende Zeilen sind rot hinterlegt, Karten mit Abweichung rot umrandet. Die Checkboxen bleiben bearbeitbar: Die Markierung folgt ungespeicherten Änderungen sofort, gespeichert wird wie gewohnt mit `Save` (die Vergleichs-CSV bleibt unverändert). Unter den Labels stehen ggf. `kein Ergebnis`, `ungültiges Ergebnis`, `unsicher` und die aufklappbare `Begründung` der Quelle.
+- **Statistik:** Das aufklappbare Panel `Statistik` zeigt je Quelle die Zahl der verglichenen, übereinstimmenden und abweichenden Bilder sowie pro Label die Konfusionswerte (`beide ✓`, `Labeler ✓ · A ✗`, `Labeler ✗ · A ✓`, `beide ✗`), die Übereinstimmung, Cohens κ und Precision, Recall und F1 mit dem Labeler als Referenz. Grundlage ist die aktuelle Auswahl (Modalität, Cell type, Suche) unabhängig vom Tab; ein Klick auf eine Abweichungszahl öffnet genau diese Bilder.
+
+**Vergleichslogik:** Pro Label gilt der Wert einer Quelle als `1` (gesetzt), `0` (nicht gesetzt) oder – bei leerer Zelle – als *nicht bewertet*. Nicht bewertete Labels zählen nie als Abweichung (die KI bewertet z. B. auf VI nur `good` und `discoloration`). Bilder, die in `labels.csv` noch kein Label haben, werden nicht verglichen.
+
+**Aufbau einer Vergleichs-CSV:** Eine Zeile pro Bild, Spaltennamen ohne Beachtung der Groß-/Kleinschreibung; komma- oder (wie bei Excel) semikolongetrennt, UTF-8 mit oder ohne BOM.
+
+| Spalte                            | Bedeutung                                                                                                                                                                                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `image_path` oder `file_name`     | Bild der Zeile (Pflicht). Absolute Pfade eines anderen Rechners werden über ihr Ende dem relativen Bildpfad zugeordnet (`…/normalized_images/23-P09-A/VI/x.tif` → `23-P09-A/VI/x.tif`), sonst über einen eindeutigen Dateinamen.                  |
+| Labelspalten (`good`, `crack`, …) | Label-Keys aus `config.json`, mindestens eine (Pflicht). `1`/`0` (auch `1.0`/`0.0`, `true`/`false`); leer = nicht bewertet. Fehlende Labelspalten gelten als nicht bewertet; eine Zeile ohne ein einziges bewertetes Label gilt als ungültig. |
+| `valid_result`                    | optional; `0` markiert das Ergebnis als ungültig – es wird nicht verglichen.                                                                                                                                                                      |
+| `uncertain`                       | optional; `1` markiert das Ergebnis als unsicher (Tab `Unsicher`).                                                                                                                                                                                |
+| `visual_status`                   | optional; Begründung der Quelle, aufklappbar auf der Karte (alternativ `reasoning`, `explanation`, `comment` oder `note`).                                                                                                                         |
+| `model` bzw. `labeler`            | optional; Anzeige in der Legende.                                                                                                                                                                                                                 |
+
+Weitere Spalten werden ignoriert. Kommt ein Bild mehrfach vor, gilt die letzte Zeile. Auch Dateien im `labels.csv`-Schema (z. B. ein zweiter Labeler oder die `ground_truth.csv` des Sample-Generators) sind gültige Vergleichsquellen.
 
 ### Aufbau von `labels.csv`
 
@@ -109,6 +137,7 @@ Die Konfiguration definiert Modalitäten und Labels; sie steuert Modalitäts-Dro
 - `data/images/` – Quellbilder, Muster `<Solarzellentyp>_<Modalität>[_<Variante>...]_<Zelle>[_<Zusatz>...].<ext>` (`.tif`, `.tiff`, `.jpg`, `.jpeg`, `.png`). Die Modalität darf ein Ziffernsuffix tragen (`EL01` → EL), die Zelle wird am Muster `Cell<Zahl>` erkannt, alles dazwischen/dahinter ist Variante: z. B. `23-P09-B1_EL_Cell001.tif`, `23_089_A1_EL_LR_Cell001.jpg`, `23-P09-A2_EL_Cell114_normalized.tif`. Bilder dürfen in Unterordnern liegen; der Identifikator ist dann der relative Pfad (z. B. `nested/TEST_23-P09-B1_EL_Cell004.tif`). Alternativ zeigt der optionale Config-Eintrag `images_dir` auf einen anderen Ordner.
 - `data/labels.csv` – aktueller Labelstatus (max. eine Zeile pro Bilddatei; Aufbau siehe [Bedienung](#aufbau-von-labelscsv))
 - `data/change_log.txt` – Änderungslog (wird ausschließlich ergänzt; Aufbau siehe [Bedienung](#aufbau-von-change_logtxt))
+- `data/*.csv` (außer `labels.csv`) – werden im Panel `Vergleich` als Vergleichsquellen angeboten, z. B. KI-Ergebnisse (Aufbau siehe [Vergleichsmodus](#vergleichsmodus))
 - `config.json` – Modalitäten und Labels (Aufbau siehe [Bedienung](#aufbau-von-configjson))
 - `static/previews/` – automatisch erzeugte JPEG-Vorschauen der TIFF-Quellen ohne Normalisierung: 8-Bit wird unverändert übernommen, 16-Bit auf das High-Byte reduziert (oder per `preview_min`/`preview_max` auf ein Fenster gemappt), Float mit 255 skaliert; per `preview_invert` werden die gemappten Werte komplementiert (Cache, Originale bleiben unverändert). Vorschauen sind maximal 2048 px groß; im Gruppierungs-Modal lässt sich per Mausrad in jedes Bild zoomen (Ziehen zum Verschieben, Doppelklick setzt zurück)
 

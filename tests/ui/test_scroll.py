@@ -12,8 +12,24 @@ def test_gallery_loads_more_on_scroll(scrolling_live_server, sample_script, page
     page.fill("#name", "UI Tester")
     page.click("button[type=submit]")
     page.wait_for_url("**/main*")
+    # hold the batch requests back until the initial batch is counted: while
+    # the previews are still loading the cards are short, so the sentinel can
+    # start inside the preload margin and fetch the next batch immediately
+    held = []
+    gate = {"open": False}
+
+    def hold_batches(route):
+        if gate["open"]:
+            route.continue_()
+        else:
+            held.append(route)
+
+    page.route("**/api/cards*", hold_batches)
     page.goto(scrolling_live_server["base_url"] + "/main?modality=all&tab=all")
     expect(page.locator(".card")).to_have_count(12)
+    gate["open"] = True
+    for route in held:
+        route.continue_()
 
     last = 12
     while page.locator("#gallery-sentinel").count() > 0:

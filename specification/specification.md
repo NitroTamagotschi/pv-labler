@@ -18,6 +18,7 @@ Die Anwendung wird in **Python** entwickelt und mit dem Webframework **Flask** u
 - Defektkategorien und Bildmodalitäten werden über eine JSON-Konfigurationsdatei definiert.
 - Die Bilddateien können in Unterordnern von `data/images/` organisiert sein.
 - Originalbilder lassen sich in voller Auflösung mit frei wählbarem Helligkeitsfenster (Window/Level) inspizieren; die Bildgruppenansicht erlaubt synchronen Zoom über alle Modalitäten.
+- Der gespeicherte Labelstatus lässt sich mit bis zu zwei weiteren Label-CSV-Dateien (z. B. KI-Ergebnissen) vergleichen; Abweichungen werden gefiltert, auf den Bildkarten hervorgehoben und statistisch ausgewertet.
 
 ## 2. Begriffe
 
@@ -31,6 +32,9 @@ Die Anwendung wird in **Python** entwickelt und mit dem Webframework **Flask** u
 | Unclassified | Ansichtsstatus für Bilder, für die noch kein Label gesetzt wurde; kein in der CSV gespeichertes Label. |
 | Alle-Tab | Ansicht, die alle Bilder der gewählten Modalität unabhängig vom Labelstatus anzeigt. |
 | Ungespeicherte Änderung | Eine Labeländerung, die über Checkboxen vorgenommen, aber noch nicht über den `Save`-Button gespeichert wurde. |
+| Vergleichsquelle | Eine CSV-Datei mit Labelergebnissen pro Bild (typischerweise von einer KI), die dem gespeicherten Labelstatus gegenübergestellt wird; in der Oberfläche als `A` bzw. `B` gekennzeichnet. |
+| Vergleichsmodus | Ansicht des Main Windows, in der Tabs, Bildkarten und Statistik die Abweichungen zwischen `labels.csv` („Labeler“) und den gewählten Vergleichsquellen zeigen (siehe 6.7). |
+| Nicht bewertet | Ein Label, zu dem eine Vergleichsquelle für ein Bild keinen Wert liefert (leere Zelle oder fehlende Spalte); es zählt nie als Abweichung. |
 
 ## 3. Label- und Modalitätskonfiguration
 
@@ -162,6 +166,7 @@ Das Main Window enthält die folgenden Bereiche:
 6. `Cell type`-Filter-Panel zur Filterung auf einzelne Solarzellentypen.
 7. `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters und der Invertierung der gewählten Modalität (schreibt in die `config.json`, siehe 3.3).
 8. Suchfeld zur Filterung der Galerie nach Dateinamen (siehe 6.4).
+9. `Vergleich`-Panel zur Auswahl von Vergleichsquellen (siehe 6.7).
 
 ### 6.2 Dropdown: Bildmodalität
 
@@ -250,6 +255,55 @@ Falls eine Modalität einer Bildgruppe nicht vorhanden ist, muss dies sichtbar a
 - Beim Klick auf `Save` werden alle ungespeicherten Änderungen in `labels.csv` und im Änderungslog persistiert. Danach wird die Ansicht neu geladen; Bilder, die nicht mehr zum aktuellen Tab-Filter passen, verschwinden aus der Galerie. Tab-Filter, Modalität, Zelltyp-Filter und Suche bleiben dabei erhalten.
 - Solange ungespeicherte Änderungen vorliegen, fragt der Browser beim Verlassen der Seite (Tab-Wechsel, Modalitätswechsel, Logout, Schließen oder Aktualisieren der Seite) über einen Bestätigungsdialog nach. Nicht gespeicherte Änderungen gehen beim Verlassen verloren.
 - Die Tab-Zählungen aktualisieren sich erst nach dem Speichern.
+
+### 6.7 Vergleichsmodus
+
+Der Vergleichsmodus stellt den gespeicherten Labelstatus (`labels.csv`, in der Oberfläche „Labeler“) den Ergebnissen von bis zu zwei Vergleichsquellen gegenüber, typischerweise den Ergebnissen einer KI.
+
+**Vergleichsquellen:**
+
+- Als Vergleichsquelle angeboten wird jede `*.csv`-Datei direkt im Verzeichnis von `labels.csv` (Standard `data/`, ohne Unterordner); `labels.csv` selbst wird nicht angeboten.
+- Eine Datei ist verwendbar, wenn sie eine Bildspalte (`image_path` oder `file_name`) und mindestens eine Spalte mit einem konfigurierten Label-Key besitzt. Spaltennamen werden ohne Beachtung der Groß-/Kleinschreibung erkannt; komma- und semikolongetrennte Dateien sowie UTF-8 mit BOM werden unterstützt. Nicht verwendbare Dateien zeigt das Panel deaktiviert mit Begründung an.
+- Pro Label enthält eine Zeile `1` (gesetzt), `0` (nicht gesetzt) oder eine leere Zelle (nicht bewertet); fehlende Labelspalten gelten als nicht bewertet. Optional sind `valid_result` (`0` = ungültiges Ergebnis), `uncertain` (`1` = unsicheres Ergebnis), eine Begründung (`visual_status`, alternativ `reasoning`, `explanation`, `comment` oder `note`) sowie `model` bzw. `labeler` für die Anzeige. Eine Zeile ohne ein einziges bewertetes Label gilt als ungültig. Auch Dateien im Schema von `labels.csv` (8.2) sind verwendbar.
+- Bildpfade werden dem Bildbestand zugeordnet: zuerst exakt, dann über das längste Pfadende, das einem relativen Bildpfad entspricht (absolute Pfade anderer Rechner; `\` gilt als `/`), zuletzt über einen eindeutigen Dateinamen. Nicht zuordenbare Zeilen werden gezählt und angezeigt; bei mehreren Zeilen für dasselbe Bild gilt die letzte.
+- Vergleichsquellen werden nur gelesen, nie verändert.
+
+**Auswahl:**
+
+- Das `Vergleich`-Panel der Kopfzeile listet die Vergleichsquellen; höchstens zwei können gleichzeitig gewählt werden. Der Vergleichsmodus ist aktiv, solange mindestens eine verwendbare Quelle gewählt ist; `Vergleich beenden` beendet ihn.
+- Die Auswahl wird als URL-Parameter `src` geführt und bleibt wie die übrigen Filter beim Wechsel von Modalität, Tab, Zelltyp und Suche sowie nach dem Speichern erhalten. Nur Dateien, die das Panel anbietet, können gewählt werden.
+- Die gewählten Quellen werden mit `A` und `B` gekennzeichnet; eine Legende zeigt Dateiname, Modell bzw. Labeler, die Anzahl zugeordneter Bilder sowie Warnungen zu nicht zuordenbaren oder doppelten Zeilen.
+
+**Vergleichslogik:**
+
+- Ein Label weicht ab, wenn die Quelle es bewertet hat und ihr Wert vom Labeler abweicht. Nicht bewertete Labels sind nie eine Abweichung.
+- Ein Bild ist vergleichbar, wenn der Labeler mindestens ein Label gesetzt hat und mindestens eine berücksichtigte Quelle ein gültiges Ergebnis liefert. Unklassifizierte Bilder (7.3) werden nicht verglichen.
+
+**Tabs im Vergleichsmodus** (ersetzen die Tabs aus 6.3, in dieser Reihenfolge):
+
+| Tab | Angezeigte Bilder |
+|---|---|
+| `Abweichungen` | Vergleichbare Bilder mit mindestens einem abweichenden Label. |
+| `<Label> ≠` (je Label) | Vergleichbare Bilder, bei denen genau dieses Label abweicht. Hat keine berücksichtigte Quelle das Label in der aktuellen Auswahl bewertet, zeigt der Tab `–` statt einer Anzahl. |
+| `Übereinstimmung` | Vergleichbare Bilder ohne Abweichung. |
+| `Unsicher` | Bilder, deren Ergebnis eine berücksichtigte Quelle als unsicher markiert hat; nur vorhanden, wenn eine gewählte Quelle die Spalte `uncertain` besitzt. |
+| `Nicht vergleichbar` | Bilder ohne Label beim Labeler oder ohne gültiges Ergebnis einer berücksichtigten Quelle. |
+| `All` | Alle Bilder der gewählten Modalität. |
+
+- Standard-Tab ist `Abweichungen`; ein Tab des normalen Modus ohne Entsprechung fällt darauf zurück. Beim Beenden des Vergleichs bleibt ein Label-Tab bzw. `All` erhalten, andere Tabs fallen auf `Unclassified` zurück.
+- In einem Label-Tab filtert `Richtung` die Abweichungen nach Seite: `Labeler ✓ · A ✗` (nur der Labeler hat das Label gesetzt) oder `Labeler ✗ · A ✓` (nur die Quelle).
+- Bei zwei Quellen beschränkt `Abweichung zu` die Tabs auf eine Quelle; Standard ist `A oder B` (Abweichung zu mindestens einer Quelle).
+- Wie in 6.3 beziehen sich Tab-Zuordnung und Tab-Zählungen auf den gespeicherten Labelstatus.
+
+**Bildkarte im Vergleichsmodus:**
+
+- Neben jeder Label-Checkbox steht pro Quelle deren Wert (gesetzt, nicht gesetzt oder `–` für nicht bewertet). Abweichende Zeilen und Werte werden hervorgehoben, Karten mit Abweichung zusätzlich umrandet.
+- Die Checkboxen des Labelers bleiben bearbeitbar; die Hervorhebung folgt ungespeicherten Änderungen sofort. Gespeichert wird wie in 6.6.
+- Unter den Labels stehen gegebenenfalls `kein Ergebnis`, `ungültiges Ergebnis`, `unsicher` sowie die aufklappbare Begründung der Quelle.
+
+**Statistik:**
+
+Ein aufklappbares Statistik-Panel zeigt je Quelle die Anzahl der verglichenen, übereinstimmenden und abweichenden Bilder (sowie gegebenenfalls der Bilder ohne Label beim Labeler, ohne Ergebnis, mit ungültigem oder unsicherem Ergebnis) und pro Label die Konfusionswerte `beide ✓`, `Labeler ✓ · A ✗`, `Labeler ✗ · A ✓` und `beide ✗`, die Übereinstimmung, Cohens κ sowie Precision, Recall und F1 mit dem Labeler als Referenz. Grundlage ist die aktuelle Auswahl aus Modalität, Zelltyp und Suche, unabhängig vom Tab. Die Abweichungszahlen verlinken auf die entsprechend gefilterte Galerie. Der Auf-/Zugeklappt-Zustand bleibt beim Neuladen nach dem Speichern erhalten.
 
 ## 7. Labelregeln
 
@@ -351,6 +405,7 @@ Das Änderungslog wird ausschließlich ergänzt; bestehende Einträge dürfen ni
 - Lesen und Schreiben der CSV-Labeldatei
 - Schreiben des Änderungslogs
 - Validierung der Labelregeln serverseitig
+- Einlesen, Zuordnen und Vergleichen der Vergleichsquellen inklusive Statistik (`compare.py`, siehe 6.7)
 
 ### 10.2 Frontend
 
@@ -359,6 +414,7 @@ Das Änderungslog wird ausschließlich ergänzt; bestehende Einträge dürfen ni
 - JavaScript für unmittelbare UI-Aktualisierungen und das Speichern über den `Save`-Button bzw. `Strg+S` (AJAX) sowie den Bestätigungsdialog beim Verlassen
 - Modal/Pop-up für die Bildgruppenansicht mit synchronem Zoom und In-Browser-Dekodierung der Original-TIFFs (vendored UTIF-Bibliothek, kein CDN)
 - `Preview-Window`-Panel zum Einstellen des Vorschau-Fensters (Regler und Zahleneingabe) und der Invertierung (Checkbox), schreibt über einen AJAX-Endpoint in die `config.json`
+- `Vergleich`-Panel mit Begrenzung auf zwei Quellen und clientseitige Neubewertung der Abweichungs-Hervorhebung bei ungespeicherten Änderungen
 
 ### 10.3 Bildanzeige
 
@@ -385,6 +441,7 @@ Die Window-Regler legen Schwarz- und Weißpunkt der Anzeige fest: Werte unterhal
 labeling_tool/
 ├── app.py
 ├── labels.py
+├── compare.py                # Vergleichsquellen: Einlesen, Zuordnen, Vergleich, Statistik
 ├── images.py
 ├── previews.py
 ├── pyproject.toml            # Abhängigkeiten und Tool-Konfiguration (uv, pytest, ruff)
@@ -393,6 +450,7 @@ labeling_tool/
 │   ├── images/
 │   ├── labels.csv
 │   ├── change_log.txt
+│   ├── <quelle>.csv           # optional: Vergleichsquellen, z. B. KI-Ergebnisse (siehe 6.7)
 │   └── ground_truth.csv       # optional: vom Sample-Generator erzeugt, Referenz für die UI-Tests
 ├── templates/
 │   ├── login.html
@@ -406,6 +464,7 @@ labeling_tool/
 │   └── create_sample_images.py
 └── tests/
     ├── test_app.py
+    ├── test_compare.py
     ├── test_labels.py
     ├── test_images.py
     ├── test_previews.py
@@ -413,6 +472,7 @@ labeling_tool/
     └── ui/
         ├── conftest.py
         ├── test_ui.py
+        ├── test_compare_mode.py
         └── test_roundtrip.py
 ```
 
@@ -445,3 +505,8 @@ Die Implementierung gilt als funktionsfähig, wenn alle folgenden Kriterien erf�
 23. Die Galerie zeigt zunächst höchstens 100 Karten und lädt beim Scrollen ans Ende automatisch weitere nach, bis alle Bilder der gewählten Ansicht erreichbar sind.
 24. Das `Preview-Window`-Panel invertiert über eine Checkbox die Vorschauen der gewählten Modalität und schreibt die Einstellung als `preview_invert` in die `config.json` zurück; die Galerie zeigt die Bilder invertiert an.
 25. Die Bildgruppenansicht bietet pro Bild einen `Invertieren`-Schalter und im Kopfbereich `Alle invertieren`, das alle Bilder auf einmal invertiert bzw. zurücksetzt; die Invertierung wirkt in Vorschau- und Originalansicht und wird nicht persistiert.
+26. Das `Vergleich`-Panel bietet die CSV-Dateien im Verzeichnis von `labels.csv` (außer dieser selbst) als Vergleichsquellen an; höchstens zwei können gleichzeitig gewählt werden, nicht verwendbare Dateien sind mit Begründung deaktiviert.
+27. Absolute Bildpfade einer Vergleichsquelle werden über ihr Pfadende den Bildern zugeordnet; leere Labelzellen gelten als nicht bewertet und nie als Abweichung; unklassifizierte Bilder werden nicht verglichen.
+28. Im Vergleichsmodus filtern die Tabs `Abweichungen`, `<Label> ≠`, `Übereinstimmung`, `Unsicher`, `Nicht vergleichbar` und `All`; ein Label-Tab lässt sich nach Richtung, bei zwei Quellen nach Quelle einschränken.
+29. Die Bildkarten zeigen im Vergleichsmodus die Werte der Quellen neben den weiterhin bearbeitbaren Checkboxen und heben Abweichungen hervor, auch für ungespeicherte Änderungen.
+30. Das Statistik-Panel zeigt je Quelle und Label die Konfusionswerte, die Übereinstimmung, Cohens κ sowie Precision, Recall und F1 für die aktuelle Auswahl; die Abweichungszahlen verlinken auf die passende Galerieansicht.

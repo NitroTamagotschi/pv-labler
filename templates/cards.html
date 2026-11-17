@@ -1,11 +1,55 @@
 {% for card in cards %}
-<article class="card" data-filename="{{ card.filename }}">
+<article class="card{% if card.cmp %} card-compare{% if card.cmp.diff %} has-diff{% endif %}{% endif %}" data-filename="{{ card.filename }}">
   <button type="button" class="card-image" title="Show image group">
     <img src="{{ card.preview_url }}" alt="{{ card.filename }}" loading="lazy">
   </button>
   <button type="button" class="card-name" title="{{ card.filename }}">{{ card.name }}
     {% if modality == 'all' %}<span class="card-modality">{{ card.modality_display }}</span>{% endif %}
   </button>
+  {% if card.cmp %}
+  {#- comparison mode: the labeler's checkboxes stay editable, one read-only
+      value column per source; data-v drives the live highlighting in main.js -#}
+  <div class="labels compare-labels" style="--src-count: {{ card.cmp.sources|length }}">
+    <div class="label-row label-head" aria-hidden="true">
+      <span>Labeler</span>
+      {% for s in card.cmp.sources %}<span class="src-tag src-{{ s.index }}" title="{{ s.name }}">{{ s.tag }}</span>{% endfor %}
+    </div>
+    {% for key, display in label_names.items() %}
+    <div class="label-row{% if card.cmp.row_diff[key] %} diff{% endif %}" data-key="{{ key }}">
+      <label class="label-check{% if key == good_key %} good{% endif %}">
+        <input type="checkbox" class="label-checkbox" data-key="{{ key }}"
+               {% if card.state[key] %}checked{% endif %}> {{ display }}
+      </label>
+      {% for s in card.cmp.sources %}
+      {%- set v = s.vals[key] %}
+      {%- set text = s.tag ~ ': ' ~ ('nicht bewertet' if v is none else ('gesetzt' if v else 'nicht gesetzt')) %}
+      <span class="src-val src-{{ s.index }} {{ 'na' if v is none else 'v' ~ v }}{% if key in s.diffs %} diff{% endif %}"
+            data-v="{{ '' if v is none else v }}" role="img" aria-label="{{ text }}" title="{{ text }}"></span>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% if card.cmp.has_notes %}
+  <div class="src-notes">
+    {% for s in card.cmp.sources %}
+    {% if s.status == 'missing' %}
+    <p class="src-status"><span class="src-tag src-{{ s.index }}">{{ s.tag }}</span> kein Ergebnis</p>
+    {% elif s.note %}
+    <details class="src-note">
+      <summary><span class="src-tag src-{{ s.index }}">{{ s.tag }}</span>
+        {{ 'ungültiges Ergebnis' if s.status == 'invalid' else 'Begründung' }}
+        {%- if s.uncertain %} <span class="badge-uncertain">unsicher</span>{% endif %}</summary>
+      <p>{{ s.note }}</p>
+    </details>
+    {% elif s.status == 'invalid' %}
+    <p class="src-status"><span class="src-tag src-{{ s.index }}">{{ s.tag }}</span> ungültiges Ergebnis</p>
+    {% elif s.uncertain %}
+    <p class="src-status"><span class="src-tag src-{{ s.index }}">{{ s.tag }}</span> <span class="badge-uncertain">unsicher</span></p>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% else %}
   <div class="labels">
     <label class="label-check good">
       <input type="checkbox" class="label-checkbox" data-key="{{ good_key }}"
@@ -18,5 +62,6 @@
     </label>
     {% endfor %}
   </div>
+  {% endif %}
 </article>
 {% endfor %}

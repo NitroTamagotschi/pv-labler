@@ -59,6 +59,43 @@
     applyCardState(entry, state);
   }
 
+  // comparison mode: {row, key, cells} per label row of a card, or null for
+  // regular cards; each cell carries the source value in data-v ("1", "0" or
+  // "" for not assessed / no result)
+  function collectCompareRows(card) {
+    if (!card.classList.contains("card-compare")) {
+      return null;
+    }
+    return [...card.querySelectorAll(".label-row[data-key]")].map((row) => ({
+      row: row,
+      key: row.dataset.key,
+      cells: [...row.querySelectorAll(".src-val")],
+    }));
+  }
+
+  // re-evaluates the difference highlighting against the current (possibly
+  // unsaved) checkboxes; mirrors compare.compare_image: an image without any
+  // label set is not compared, and unassessed cells never differ
+  function refreshCompare(entry) {
+    if (!entry.compareRows) {
+      return;
+    }
+    const labeled = labelKeys.some((key) => entry.checkboxes[key].checked);
+    let cardDiff = false;
+    for (const { row, key, cells } of entry.compareRows) {
+      const human = entry.checkboxes[key].checked ? "1" : "0";
+      let rowDiff = false;
+      for (const cell of cells) {
+        const diff = labeled && cell.dataset.v !== "" && cell.dataset.v !== human;
+        cell.classList.toggle("diff", diff);
+        rowDiff = rowDiff || diff;
+      }
+      row.classList.toggle("diff", rowDiff);
+      cardDiff = cardDiff || rowDiff;
+    }
+    entry.card.classList.toggle("has-diff", cardDiff);
+  }
+
   // tracks one entry's dirty state against the incremental dirtyCount
   function updateDirty(entry) {
     const dirty = cardIsDirty(entry);
@@ -471,7 +508,12 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     function makeEntry(card) {
-      return { card: card, checkboxes: collectCheckboxes(card), dirty: false };
+      return {
+        card: card,
+        checkboxes: collectCheckboxes(card),
+        dirty: false,
+        compareRows: collectCompareRows(card),
+      };
     }
 
     // attaches the listeners every card needs; used for the initial batch
@@ -483,6 +525,7 @@
           applyLocalChange(entry, checkbox.dataset.key, checkbox.checked);
           updateDirty(entry);
           refreshSaveButton();
+          refreshCompare(entry);
         }
       });
       for (const button of entry.card.querySelectorAll(".card-image, .card-name")) {
@@ -588,19 +631,33 @@
       document.getElementById("modal-invert-all").setAttribute("aria-pressed", String(on));
     });
 
-    // cell type filter panel
-    const typeTrigger = document.getElementById("type-filter-trigger");
-    const typePanel = document.getElementById("type-filter-panel");
-    if (typeTrigger && typePanel) {
-      typeTrigger.addEventListener("click", (event) => {
+    // dropdown panels of the top bar: a trigger toggles its panel (and closes
+    // the other panels); outside clicks and Escape close them
+    const dropdownPanels = [];
+    function wireDropdown(trigger, panel) {
+      if (!trigger || !panel) {
+        return false;
+      }
+      trigger.addEventListener("click", (event) => {
         event.stopPropagation();
-        typePanel.hidden = !typePanel.hidden;
+        const open = panel.hidden;
+        for (const other of dropdownPanels) {
+          other.hidden = true;
+        }
+        panel.hidden = !open;
       });
       document.addEventListener("click", (event) => {
-        if (!typePanel.hidden && !typePanel.contains(event.target) && event.target !== typeTrigger) {
-          typePanel.hidden = true;
+        if (!panel.hidden && !panel.contains(event.target) && event.target !== trigger) {
+          panel.hidden = true;
         }
       });
+      dropdownPanels.push(panel);
+      return true;
+    }
+
+    // cell type filter panel
+    const typePanel = document.getElementById("type-filter-panel");
+    if (wireDropdown(document.getElementById("type-filter-trigger"), typePanel)) {
       const toggleAllTypes = (checked) => {
         typePanel.querySelectorAll('input[name="cell_type"]').forEach((checkbox) => {
           checkbox.checked = checked;
@@ -612,22 +669,8 @@
 
     // preview window panel: adjust the modality's preview window live and
     // persist it to config.json; the page reloads to refresh the previews
-    const windowTrigger = document.getElementById("window-filter-trigger");
     const windowPanel = document.getElementById("window-filter-panel");
-    if (windowTrigger && windowPanel) {
-      windowTrigger.addEventListener("click", (event) => {
-        event.stopPropagation();
-        windowPanel.hidden = !windowPanel.hidden;
-      });
-      document.addEventListener("click", (event) => {
-        if (
-          !windowPanel.hidden &&
-          !windowPanel.contains(event.target) &&
-          event.target !== windowTrigger
-        ) {
-          windowPanel.hidden = true;
-        }
-      });
+    if (wireDropdown(document.getElementById("window-filter-trigger"), windowPanel)) {
       const minSlider = document.getElementById("window-min");
       const maxSlider = document.getElementById("window-max");
       if (minSlider && maxSlider) {
@@ -700,6 +743,41 @@
       }
     }
 
+    // comparison panel: at most data-max source CSVs can be checked at once
+    const comparePanel = document.getElementById("compare-panel");
+    if (wireDropdown(document.getElementById("compare-trigger"), comparePanel)) {
+      const max = Number(comparePanel.dataset.max);
+      const boxes = [...comparePanel.querySelectorAll('input[name="src"]')];
+      const enforceMax = () => {
+        const full = boxes.filter((box) => box.checked).length >= max;
+        for (const box of boxes) {
+          box.disabled = full && !box.checked;
+        }
+      };
+      for (const box of boxes) {
+        box.addEventListener("change", enforceMax);
+      }
+      enforceMax();
+    }
+
+    // the statistics panel keeps its open state across reloads (e.g. after
+    // saving); storage may be unavailable, then it simply starts closed
+    const statsPanel = document.getElementById("compare-stats");
+    if (statsPanel) {
+      try {
+        statsPanel.open = sessionStorage.getItem("pv-compare-stats-open") === "1";
+      } catch (error) {
+        console.debug("compare stats state not restored", error);
+      }
+      statsPanel.addEventListener("toggle", () => {
+        try {
+          sessionStorage.setItem("pv-compare-stats-open", statsPanel.open ? "1" : "0");
+        } catch (error) {
+          console.debug("compare stats state not stored", error);
+        }
+      });
+    }
+
     document.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         // preventDefault keeps the browser's "Save page" dialog from opening;
@@ -714,12 +792,8 @@
         if (!modal.hidden) {
           closeGroupModal();
         }
-        if (typePanel && !typePanel.hidden) {
-          typePanel.hidden = true;
-        }
-        const winPanel = document.getElementById("window-filter-panel");
-        if (winPanel && !winPanel.hidden) {
-          winPanel.hidden = true;
+        for (const panel of dropdownPanels) {
+          panel.hidden = true;
         }
       }
     });

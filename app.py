@@ -10,7 +10,7 @@ import json
 import os
 import re
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from urllib.parse import urlencode
 
 from flask import (
@@ -26,6 +26,7 @@ from flask import (
     url_for,
 )
 
+import compare
 import images
 import labels
 import previews
@@ -49,6 +50,9 @@ GALLERY_BATCH = 100
 
 # search patterns longer than this are truncated (they cannot match anyway)
 MAX_SEARCH_LEN = 200
+
+# comparison sources selectable at the same time (one value column each per card)
+MAX_COMPARE_SOURCES = 2
 
 
 def load_config(path: str = CONFIG_PATH) -> dict:
@@ -158,6 +162,166 @@ def _matches_tab(state: dict, tab: str, is_unclassified: bool) -> bool:
     return bool(state.get(tab, 0))
 
 
+def _display_dir(path: str) -> str:
+    """Return a directory for the UI: project-relative when inside the project."""
+    try:
+        relative = os.path.relpath(path, BASE_DIR)
+    except ValueError:  # another drive on Windows
+        return path
+    if relative.startswith(".."):
+        return path
+    return relative.replace(os.sep, "/") + "/"
+
+
+def _compare_context(
+    view: dict,
+    counts: dict[str, int],
+    stats: compare.CompareStats,
+    direction: dict[str, int],
+    href: Callable[..., str],
+) -> dict:
+    """Build the tabs, legend, filter links and statistics of the comparison mode.
+
+    counts, stats and direction come from the single pass of /main over the
+    filtered images; href builds a /main URL with some filters replaced.
+    """
+    sources = view["sources"]
+    tags = view["source_tags"]
+    scope = view["scope"]
+    tab = view["tab"]
+    only = view["only"]
+    in_scope = range(len(sources)) if scope is None else [scope]
+
+    tabs = [
+        {
+            "key": compare.TAB_DIFF,
+            "label": "Abweichungen",
+            "count": counts[compare.TAB_DIFF],
+            "title": "Bilder, bei denen mindestens ein bewertetes Label abweicht",
+        }
+    ]
+    for key, display in view["label_names"].items():
+        # a label no in-scope source assessed cannot differ: "–" instead of 0
+        assessed = any(stats.sources[i].labels[key].n for i in in_scope)
+        tabs.append(
+            {
+                "key": key,
+                "label": f"{display} ≠",
+                "count": counts[key] if assessed else "–",
+                "dim": not assessed,
+                "title": f"Bilder, bei denen {display} abweicht"
+                if assessed
+                else f"{display} wurde in dieser Auswahl nicht verglichen",
+            }
+        )
+    tabs.append(
+        {
+            "key": compare.TAB_AGREE,
+            "label": "Übereinstimmung",
+            "count": counts[compare.TAB_AGREE],
+            "title": "Alle bewerteten Labels stimmen überein",
+        }
+    )
+    if compare.TAB_UNCERTAIN in counts:
+        tabs.append(
+            {
+                "key": compare.TAB_UNCERTAIN,
+                "label": "Unsicher",
+                "count": counts[compare.TAB_UNCERTAIN],
+                "title": "Die Quelle hat ihr Ergebnis als unsicher markiert",
+            }
+        )
+    tabs.append(
+        {
+            "key": compare.TAB_NONE,
+            "label": "Nicht vergleichbar",
+            "count": counts[compare.TAB_NONE],
+            "title": "Ohne Label in labels.csv oder ohne gültiges Ergebnis der Quelle",
+        }
+    )
+    tabs.append({"key": compare.TAB_ALL, "label": "All", "count": counts[compare.TAB_ALL]})
+    for entry in tabs:
+        entry["href"] = href(tab=entry["key"], only="")
+
+    scope_links = []
+    if len(sources) > 1:
+        scope_links.append(
+            {"label": " oder ".join(tags), "href": href(scope=""), "active": scope is None}
+        )
+        scope_links.extend(
+            {
+                "label": tag,
+                "title": source.name,
+                "href": href(scope=source.id),
+                "active": scope == i,
+            }
+            for i, (tag, source) in enumerate(zip(tags, sources, strict=True))
+        )
+
+    only_links = []
+    if tab in view["label_keys"]:
+        other = "/".join(tags[i] for i in in_scope)
+        only_links = [
+            {"label": "alle", "count": counts[tab], "href": href(only=""), "active": not only},
+            {
+                "label": f"Labeler ✓ · {other} ✗",
+                "count": direction[compare.ONLY_LABELER],
+                "href": href(only=compare.ONLY_LABELER),
+                "active": only == compare.ONLY_LABELER,
+            },
+            {
+                "label": f"Labeler ✗ · {other} ✓",
+                "count": direction[compare.ONLY_SOURCE],
+                "href": href(only=compare.ONLY_SOURCE),
+                "active": only == compare.ONLY_SOURCE,
+            },
+        ]
+
+    legend = []
+    blocks = []
+    for i, (tag, source, source_stats) in enumerate(zip(tags, sources, stats.sources, strict=True)):
+        legend.append(
+            {
+                "index": i,
+                "tag": tag,
+                "name": source.name,
+                "detail": source.detail,
+                "matched": len(source.results),
+                "unmatched": source.unmatched,
+                "unmatched_samples": source.unmatched_samples,
+                "duplicates": source.duplicates,
+            }
+        )
+        # with two sources the statistics links narrow the gallery to this one
+        scope_id = source.id if len(sources) > 1 else ""
+        blocks.append(
+            {
+                "index": i,
+                "tag": tag,
+                "name": source.name,
+                "stats": source_stats,
+                "agree_href": href(tab=compare.TAB_AGREE, only="", scope=scope_id),
+                "diff_href": href(tab=compare.TAB_DIFF, only="", scope=scope_id),
+                "rows": [
+                    {
+                        "label": display,
+                        "counts": source_stats.labels[key],
+                        "fn_href": href(tab=key, only=compare.ONLY_LABELER, scope=scope_id),
+                        "fp_href": href(tab=key, only=compare.ONLY_SOURCE, scope=scope_id),
+                    }
+                    for key, display in view["label_names"].items()
+                ],
+            }
+        )
+    return {
+        "tabs": tabs,
+        "scope_links": scope_links,
+        "only_links": only_links,
+        "legend": legend,
+        "stats": blocks,
+    }
+
+
 def create_app(
     config: dict | None = None,
     images_dir: str | None = None,
@@ -165,6 +329,7 @@ def create_app(
     change_log: str | None = None,
     previews_dir: str | None = None,
     config_path: str | None = None,
+    compare_dir: str | None = None,
 ) -> Flask:
     """Create the Flask app wired to the given config and storage locations.
 
@@ -173,7 +338,9 @@ def create_app(
     is None (no write-back) when a config dict is passed without a path.
     images_dir falls back to the config's optional 'images_dir' entry and
     then to data/images/; a configured directory must already exist, and an
-    explicit images_dir parameter always wins.
+    explicit images_dir parameter always wins. compare_dir holds the CSV
+    files offered as comparison sources and defaults to the directory of
+    labels.csv.
     """
     app = Flask(__name__)
     app.secret_key = os.environ.get("PV_LABLER_SECRET_KEY", "dev-secret-key-change-me")
@@ -190,16 +357,29 @@ def create_app(
     images_dir = images_dir or IMAGES_DIR
     os.makedirs(images_dir, exist_ok=True)
 
+    labels_csv = labels_csv or LABELS_CSV
+
     app.config["PV_CONFIG"] = config
     app.config["PV_IMAGES_DIR"] = images_dir
-    app.config["PV_STORE"] = labels.LabelStore(
-        labels_csv or LABELS_CSV, change_log or CHANGE_LOG, config
-    )
+    app.config["PV_LABELS_CSV"] = labels_csv
+    app.config["PV_COMPARE_DIR"] = compare_dir or os.path.dirname(os.path.abspath(labels_csv))
+    app.config["PV_SOURCES"] = compare.SourceCache()
+    app.config["PV_STORE"] = labels.LabelStore(labels_csv, change_log or CHANGE_LOG, config)
     app.config["PV_INDEX"] = images.ImageIndex(
         images_dir, images.modality_filename_codes(config["modalities"]), log=app.logger.warning
     )
     app.config["PV_PREVIEWS"] = previews.PreviewGenerator(images_dir, previews_dir or PREVIEWS_DIR)
     app.config["PV_PREVIEW_WINDOWS"] = _preview_windows(config)
+
+    @app.template_filter("pct")
+    def pct_filter(value: float | None) -> str:
+        """Format a share as a percentage ("–" when undefined)."""
+        return "–" if value is None else f"{value * 100:.1f} %"
+
+    @app.template_filter("dec")
+    def dec_filter(value: float | None) -> str:
+        """Format a ratio with two decimals ("–" when undefined)."""
+        return "–" if value is None else f"{value:.2f}"
 
     @app.route("/")
     def index() -> Response | str:
@@ -223,21 +403,72 @@ def create_app(
         session.clear()
         return redirect(url_for("index"))
 
+    def load_sources(label_keys: list[str], all_images: dict) -> tuple[list, list]:
+        """Return (offered source files, selected and loaded sources).
+
+        Only files the panel offers can be selected (src), which also rules
+        out paths outside the comparison directory. Unusable files and load
+        errors stay unselected; their reason is shown in the panel.
+        """
+        files = compare.discover_sources(
+            app.config["PV_COMPARE_DIR"], label_keys, exclude=[app.config["PV_LABELS_CSV"]]
+        )
+        usable = {f.id: f for f in files if f.error is None}
+        sources = []
+        for source_id in request.args.getlist("src"):
+            if source_id not in usable or any(s.id == source_id for s in sources):
+                continue
+            if len(sources) == MAX_COMPARE_SOURCES:
+                break
+            source = app.config["PV_SOURCES"].get(
+                usable[source_id].path, source_id, label_keys, all_images
+            )
+            if source.error:
+                usable[source_id].error = source.error
+                continue
+            sources.append(source)
+        return files, sources
+
     def view_params() -> dict:
-        """Resolve the modality/tab/cell-type filters shared by main and cards."""
+        """Resolve the filters shared by main and cards.
+
+        Besides modality, tab, cell type and search this covers the
+        comparison mode: it is on as soon as one source CSV is selected (src)
+        and swaps the label tabs for the difference tabs of compare.py;
+        scope narrows the tabs to one of two sources, only the direction
+        within a label tab.
+        """
         cfg = app.config["PV_CONFIG"]
         modality_codes = [m["code"] for m in cfg["modalities"]]
         modality = request.args.get("modality", modality_codes[0])
         if modality != "all" and modality not in modality_codes:
             modality = modality_codes[0]
-        tab = request.args.get("tab", "unclassified")
         good_key = cfg["labels"]["good"]["key"]
         defect_keys = [d["key"] for d in cfg["labels"]["defects"]]
-        valid_tabs = [RESERVED_TAB_KEYS[0], good_key, *defect_keys, RESERVED_TAB_KEYS[1]]
-        if tab not in valid_tabs:
-            tab = "unclassified"
+        label_keys = [good_key, *defect_keys]
         all_images, _ = app.config["PV_INDEX"].get()
         states = app.config["PV_STORE"].get_states()
+        source_files, sources = load_sources(label_keys, all_images)
+        if sources:
+            valid_tabs = [compare.TAB_DIFF, *label_keys, compare.TAB_AGREE]
+            if any(s.has_uncertain for s in sources):
+                valid_tabs.append(compare.TAB_UNCERTAIN)
+            valid_tabs += [compare.TAB_NONE, compare.TAB_ALL]
+        else:
+            valid_tabs = [RESERVED_TAB_KEYS[0], *label_keys, RESERVED_TAB_KEYS[1]]
+        tab = request.args.get("tab", valid_tabs[0])
+        if tab not in valid_tabs:
+            tab = valid_tabs[0]
+        scope = None
+        if len(sources) > 1:
+            scope_id = request.args.get("scope", "")
+            scope = next((i for i, s in enumerate(sources) if s.id == scope_id), None)
+        only = request.args.get("only", "")
+        if not (sources and tab in label_keys) or only not in (
+            compare.ONLY_LABELER,
+            compare.ONLY_SOURCE,
+        ):
+            only = ""
         all_types = sorted({info.cell_type for info in all_images.values()})
         selected_types = [t for t in request.args.getlist("cell_type") if t in all_types]
         if len(selected_types) == len(all_types):
@@ -249,9 +480,20 @@ def create_app(
             "tab": tab,
             "good_key": good_key,
             "defect_keys": defect_keys,
+            "label_keys": label_keys,
+            "label_names": {
+                good_key: cfg["labels"]["good"]["display_name"],
+                **{d["key"]: d["display_name"] for d in cfg["labels"]["defects"]},
+            },
             "valid_tabs": valid_tabs,
             "all_images": all_images,
             "states": states,
+            "source_files": source_files,
+            "sources": sources,
+            "source_tags": [chr(ord("A") + i) for i in range(len(sources))],
+            "scope": scope,
+            "scope_id": sources[scope].id if scope is not None else "",
+            "only": only,
             "all_types": all_types,
             "selected_types": selected_types,
             "search": search,
@@ -267,13 +509,15 @@ def create_app(
 
     def filtered_images(
         view: dict,
-    ) -> Iterator[tuple[str, images.ImageInfo, dict, bool]]:
+    ) -> Iterator[tuple[str, images.ImageInfo, dict, bool, compare.ImageComparison | None]]:
         """Yield the images passing the view's modality, cell-type and search filters.
 
-        Yields (filename, info, state, is_unclassified) tuples. The single
-        filter predicate shared by the /main tab counts and the /api/cards
-        batches, so both always see exactly the same image set.
+        Yields (filename, info, state, is_unclassified, comparison) tuples;
+        comparison is None outside the comparison mode. The single filter
+        predicate shared by the /main tab counts and the /api/cards batches,
+        so both always see exactly the same image set.
         """
+        sources = view["sources"]
         for filename, info in view["all_images"].items():
             if view["modality"] != "all" and info.modality != view["modality"]:
                 continue
@@ -285,11 +529,48 @@ def create_app(
             is_unclassified = not state.get(view["good_key"], 0) and not any(
                 state.get(k, 0) for k in view["defect_keys"]
             )
-            yield filename, info, state, is_unclassified
+            comparison = None
+            if sources:
+                comparison = compare.compare_image(
+                    state, [s.results.get(filename) for s in sources], view["label_keys"]
+                )
+            yield filename, info, state, is_unclassified, comparison
 
-    def card_data(view: dict, filename: str, info: images.ImageInfo, state: dict) -> dict:
+    def tab_membership(
+        view: dict, state: dict, is_unclassified: bool, comparison: compare.ImageComparison | None
+    ) -> tuple[list[str], bool]:
+        """Return (tabs the image is counted in, whether the active tab shows it).
+
+        The active tab additionally applies the direction filter (only) of
+        the comparison mode.
+        """
+        tab = view["tab"]
+        if comparison is None:
+            member_of = [t for t in view["valid_tabs"] if _matches_tab(state, t, is_unclassified)]
+            return member_of, tab in member_of
+        member_of = compare.tab_keys(comparison, view["scope"])
+        return member_of, tab in member_of and compare.in_direction(comparison, tab, view["only"])
+
+    def shows(
+        view: dict, state: dict, is_unclassified: bool, comparison: compare.ImageComparison | None
+    ) -> bool:
+        """Return whether the active tab (with its direction filter) shows the image.
+
+        The per-image check of /api/cards, which needs no tab counts.
+        """
+        if comparison is None:
+            return _matches_tab(state, view["tab"], is_unclassified)
+        return compare.matches_tab(comparison, view["tab"], view["scope"], view["only"])
+
+    def card_data(
+        view: dict,
+        filename: str,
+        info: images.ImageInfo,
+        state: dict,
+        comparison: compare.ImageComparison | None = None,
+    ) -> dict:
         """Return the template dict for one card of the given view."""
-        return {
+        card = {
             "filename": filename,
             "name": os.path.splitext(os.path.basename(filename))[0],
             "modality_display": view["modality_displays"].get(info.modality, info.modality),
@@ -297,6 +578,36 @@ def create_app(
             "defects": {k: state.get(k, 0) for k in view["defect_keys"]},
             "preview_url": url_for("preview", file=filename, v=view["window_sig"][info.modality]),
         }
+        if comparison is not None:
+            # differences are highlighted for every source, independent of the scope
+            card["state"] = {k: state.get(k, 0) for k in view["label_keys"]}
+            card["cmp"] = {
+                "diff": any(s.diffs for s in comparison.sources),
+                "has_notes": any(
+                    s.status != compare.STATUS_OK or s.uncertain or s.note
+                    for s in comparison.sources
+                ),
+                "row_diff": {
+                    k: any(k in s.diffs for s in comparison.sources) for k in view["label_keys"]
+                },
+                "sources": [
+                    {
+                        "index": i,
+                        "tag": tag,
+                        "name": source.name,
+                        "status": result.status,
+                        "uncertain": result.uncertain,
+                        "note": result.note,
+                        # not "values": Jinja would resolve that to dict.values
+                        "vals": result.values,
+                        "diffs": result.diffs,
+                    }
+                    for i, (tag, source, result) in enumerate(
+                        zip(view["source_tags"], view["sources"], comparison.sources, strict=True)
+                    )
+                ],
+            }
+        return card
 
     @app.route("/main")
     def main() -> Response | str:
@@ -323,58 +634,86 @@ def create_app(
                 continue
             type_counts[info.cell_type] = type_counts.get(info.cell_type, 0) + 1
 
-        # one pass over the filtered images drives the tab counts and builds
-        # the first card batch; /api/cards reuses the same predicate and
-        # builds the following batches on demand
+        # one pass over the filtered images drives the tab counts (and the
+        # comparison statistics) and builds the first card batch; /api/cards
+        # reuses the same predicate and builds the following batches on demand
+        sources = view["sources"]
         counts = {t: 0 for t in valid_tabs}
+        stats = compare.CompareStats(len(sources), view["label_keys"]) if sources else None
+        # direction split of the active label tab (comparison mode)
+        direction = {compare.ONLY_LABELER: 0, compare.ONLY_SOURCE: 0}
         cards = []
         card_total = 0
-        for filename, info, state, is_unclassified in filtered_images(view):
-            for t in valid_tabs:
-                if _matches_tab(state, t, is_unclassified):
+        for filename, info, state, is_unclassified, comparison in filtered_images(view):
+            member_of, selected = tab_membership(view, state, is_unclassified, comparison)
+            for t in member_of:
+                if t in counts:
                     counts[t] += 1
-            if _matches_tab(state, tab, is_unclassified):
+            if comparison is not None:
+                stats.add(comparison)
+                if tab in member_of and tab in view["label_keys"]:
+                    side = compare.ONLY_LABELER if state.get(tab, 0) else compare.ONLY_SOURCE
+                    direction[side] += 1
+            if selected:
                 card_total += 1
                 if len(cards) < GALLERY_BATCH:
-                    cards.append(card_data(view, filename, info, state))
+                    cards.append(card_data(view, filename, info, state, comparison))
 
-        def view_href(tab_key: str, include_q: bool = True) -> str:
-            """Build the /main URL for one tab with all resolved filters.
+        # the resolved filters; every link and the sentinel query is built from
+        # them, so a stray parameter in the browser URL can never leak through
+        state_query = {
+            "modality": modality,
+            "tab": tab,
+            "cell_type": selected_types,
+            "q": view["search"],
+            "src": [s.id for s in sources],
+            "scope": view["scope_id"],
+            "only": view["only"],
+        }
 
-            Shared by the tab links and the search-clear link (which drops q);
-            an empty search never appears as a bare "q=" in the URL.
+        def view_href(**overrides: object) -> str:
+            """Build the /main URL of the current view with some filters replaced.
+
+            Shared by the tab, direction, scope and statistics links and the
+            search-clear link (q=""); empty filters are dropped, so an empty
+            search never appears as a bare "q=" in the URL.
             """
-            query = {"modality": modality, "tab": tab_key, "cell_type": selected_types}
-            if include_q and view["search"]:
-                query["q"] = view["search"]
+            query = {k: v for k, v in {**state_query, **overrides}.items() if v not in ("", [])}
             return f"{url_for('main')}?{urlencode(query, doseq=True)}"
 
-        tabs = [
-            {
-                "key": "unclassified",
-                "label": "Unclassified",
-                "count": counts["unclassified"],
-                "href": view_href("unclassified"),
-            },
-            {
-                "key": good_key,
-                "label": cfg["labels"]["good"]["display_name"],
-                "count": counts[good_key],
-                "href": view_href(good_key),
-            },
-        ]
-        tabs.extend(
-            {
-                "key": d["key"],
-                "label": d["display_name"],
-                "count": counts[d["key"]],
-                "href": view_href(d["key"]),
-            }
-            for d in cfg["labels"]["defects"]
-        )
-        tabs.append(
-            {"key": "all", "label": "All", "count": counts["all"], "href": view_href("all")}
-        )
+        compare_ctx = None
+        if sources:
+            compare_ctx = _compare_context(view, counts, stats, direction, view_href)
+            tabs = compare_ctx["tabs"]
+        else:
+            tabs = [
+                {
+                    "key": "unclassified",
+                    "label": "Unclassified",
+                    "count": counts["unclassified"],
+                    "href": view_href(tab="unclassified"),
+                },
+                {
+                    "key": good_key,
+                    "label": cfg["labels"]["good"]["display_name"],
+                    "count": counts[good_key],
+                    "href": view_href(tab=good_key),
+                },
+            ]
+            tabs.extend(
+                {
+                    "key": d["key"],
+                    "label": d["display_name"],
+                    "count": counts[d["key"]],
+                    "href": view_href(tab=d["key"]),
+                }
+                for d in cfg["labels"]["defects"]
+            )
+            tabs.append(
+                {"key": "all", "label": "All", "count": counts["all"], "href": view_href(tab="all")}
+            )
+        # leaving the comparison keeps a label tab; difference tabs fall back
+        normal_tab = tab if tab in [*view["label_keys"], RESERVED_TAB_KEYS[1]] else "unclassified"
         if not selected_types:
             cell_type_label = "All"
         elif len(selected_types) == 1:
@@ -423,23 +762,26 @@ def create_app(
             # stray offset=... in the browser URL can never leak into the
             # pagination and repeat batches (see main.js)
             sentinel_query=urlencode(
-                {
-                    "modality": modality,
-                    "tab": tab,
-                    "cell_type": selected_types,
-                    **({"q": view["search"]} if view["search"] else {}),
-                },
-                doseq=True,
+                {k: v for k, v in state_query.items() if v not in ("", [])}, doseq=True
             ),
             selected_types=selected_types,
             search=view["search"],
-            clear_href=view_href(tab, include_q=False),
+            clear_href=view_href(q=""),
             cell_type_label=cell_type_label,
             cell_types=[{"value": t, "count": type_counts[t]} for t in view["all_types"]],
             good_key=good_key,
             good_label=cfg["labels"]["good"]["display_name"],
             defects=cfg["labels"]["defects"],
             defect_keys=defect_keys,
+            label_names=view["label_names"],
+            compare=compare_ctx,
+            src_ids=state_query["src"],
+            scope_id=view["scope_id"],
+            only=view["only"],
+            compare_files=view["source_files"],
+            compare_dir_label=_display_dir(app.config["PV_COMPARE_DIR"]),
+            compare_clear_href=view_href(tab=normal_tab, src=[], scope="", only=""),
+            max_compare_sources=MAX_COMPARE_SOURCES,
             modal_max_width=cfg.get("modal_max_width", 1100),
             modal_max_height=modal_max_height,
             preview_window_label=preview_window_label,
@@ -466,14 +808,14 @@ def create_app(
         cards = []
         remaining = 0
         skipped = 0
-        for filename, info, state, is_unclassified in filtered_images(view):
-            if not _matches_tab(state, view["tab"], is_unclassified):
+        for filename, info, state, is_unclassified, comparison in filtered_images(view):
+            if not shows(view, state, is_unclassified, comparison):
                 continue
             if skipped < offset:
                 skipped += 1
                 continue
             if len(cards) < GALLERY_BATCH:
-                cards.append(card_data(view, filename, info, state))
+                cards.append(card_data(view, filename, info, state, comparison))
             else:
                 remaining += 1
         html = render_template(
@@ -483,6 +825,7 @@ def create_app(
             good_key=view["good_key"],
             good_label=view["cfg"]["labels"]["good"]["display_name"],
             defects=view["cfg"]["labels"]["defects"],
+            label_names=view["label_names"],
         )
         return jsonify(ok=True, html=html, count=len(cards), remaining=remaining)
 
